@@ -1,18 +1,136 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>League of Legends Stats - Nirlau61#EUW</title>
-    <link rel="stylesheet" href="style.css">
+    <title>League of Legends Stats</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #181a20;
+            --bg-card: #23262f;
+            --text: #f1f1f1;
+            --accent: #3b82f6;
+            --accent2: #7dd3fc;
+            --border: #2d313d;
+            --shadow: 0 4px 24px 0 #000a;
+        }
+        html, body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Montserrat', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+        #lol-stats-container {
+            max-width: 900px;
+            margin: 48px auto 0;
+            background: var(--bg-card);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+            padding: 36px 28px 32px 28px;
+        }
+        h2, h3 {
+            color: var(--accent);
+            margin-top: 0.5em;
+        }
+        h2 {
+            font-size: 2.1em;
+            margin-bottom: 0.2em;
+        }
+        h3 {
+            font-size: 1.3em;
+            margin-bottom: 0.7em;
+        }
+        p, li, td, th {
+            font-size: 1.08em;
+        }
+        .champ-list {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+            padding: 0;
+            margin: 0 0 1.5em 0;
+        }
+        .champ-list li {
+            text-align: center;
+            background: var(--border);
+            border-radius: 12px;
+            padding: 12px 10px 10px 10px;
+            box-shadow: 0 2px 8px #0004;
+            min-width: 110px;
+        }
+        .champ-list img {
+            width: 64px;
+            height: 64px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: #222;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.2em;
+            background: var(--bg-card);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px #0003;
+        }
+        th, td {
+            padding: 10px 8px;
+            text-align: center;
+        }
+        th {
+            background: var(--border);
+            color: var(--accent2);
+            font-weight: 700;
+            font-size: 1.05em;
+        }
+        tr {
+            border-bottom: 1px solid var(--border);
+        }
+        tr:last-child {
+            border-bottom: none;
+        }
+        tr:hover {
+            background: #23262f99;
+        }
+        .champion-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .champion-cell img {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: #222;
+        }
+        a {
+            color: var(--accent2);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        a:hover {
+            color: var(--accent);
+        }
+        @media (max-width: 700px) {
+            #lol-stats-container {
+                padding: 16px 4vw 18px 4vw;
+            }
+            .champ-list {
+                gap: 12px;
+            }
+            table, th, td {
+                font-size: 0.98em;
+            }
+        }
+    </style>
+    <script defer src="lol-stats.js"></script>
 </head>
 <body>
-    <h1>League of Legends Stats</h1>
-    <p>Account: <strong>Nirlau61#EUW</strong></p>
-    <div id="lol-stats-container">
-        <p>Lade Statistiken ...</p>
-    </div>
-    <a href="index.html" style="display:block;margin-top:30px;">Zurück zur Startseite</a>
-    <script src="lol-stats.js"></script>
+    <div id="lol-stats-container"></div>
+    <p style="max-width:900px;margin:40px auto 0;text-align:center;"><a href="index.html">Zurück zur Startseite</a></p>
 </body>
 </html>
