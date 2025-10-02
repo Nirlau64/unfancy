@@ -48,13 +48,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         html += `<p>Level: ${data.level || 'N/A'}</p>`;
 
         // Gesamt-Mastery
-        if (typeof data.totalMastery === 'number') {
-            html += `<p>Gesamt Mastery: ${data.totalMastery.toLocaleString('de-DE')}</p>`;
+        if (typeof data.totalMasteryPoints === 'number') {
+            html += `<p>Gesamt Mastery: ${data.totalMasteryPoints.toLocaleString('de-DE')}</p>`;
         }
 
-        // Account-Erstellungsdatum
-        if (data.accountCreated) {
-            const date = new Date(data.accountCreated);
+        // Account-Erstellungsdatum (exakt oder Approximation)
+        let created = data.accountCreatedAt || data.accountCreatedAtApprox;
+        if (created) {
+            const date = new Date(created);
             html += `<p>Account erstellt am: ${date.toLocaleDateString('de-DE')}</p>`;
         }
 
@@ -78,18 +79,19 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         // Letzte 10 Spiele
-        if (data.matches && Array.isArray(data.matches) && data.matches.length) {
+        if (data.recentMatches && Array.isArray(data.recentMatches) && data.recentMatches.length) {
             html += '<h3>Letzte 10 Spiele</h3>';
             html += '<table style="width:100%;border-collapse:collapse;font-size:0.98em;">';
             html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Ergebnis</th></tr></thead><tbody>';
-            data.matches.slice(0, 10).forEach(match => {
-                let champData = champMap[String(match.championId)] || champMap[match.championId];
-                const champName = champData ? champData.name : `ID ${match.championId}`;
+            data.recentMatches.slice(0, 10).forEach(match => {
+                if (!match.you) return;
+                let champData = champMap[String(match.you.championId)] || champMap[match.you.championId];
+                const champName = champData ? champData.name : `ID ${match.you.championId}`;
                 const champImg = champData ? `<img src="${champData.imageUrl}" alt="${champName}" style="width:32px;height:32px;vertical-align:middle;">` : '';
-                const kda = `${match.kills}/${match.deaths}/${match.assists}`;
-                const cs = match.cs !== undefined ? match.cs : '-';
-                const duration = match.duration ? `${Math.floor(match.duration/60)}:${('0'+(match.duration%60)).slice(-2)}` : '-';
-                const result = match.win ? 'Sieg' : 'Niederlage';
+                const kda = `${match.you.kills}/${match.you.deaths}/${match.you.assists}`;
+                const cs = match.you.cs !== undefined ? match.you.cs : '-';
+                const duration = match.gameDuration ? `${Math.floor(match.gameDuration/60)}:${('0'+(match.gameDuration%60)).slice(-2)}` : '-';
+                const result = match.you.win ? 'Sieg' : 'Niederlage';
                 html += `<tr style="text-align:center;">
                     <td>${champImg} ${champName}</td>
                     <td>${kda}</td>
