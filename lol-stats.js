@@ -47,27 +47,21 @@ document.addEventListener('DOMContentLoaded', async function() {
         html += `<h2>Summoner: Nirlau61</h2>`;
         html += `<p>Level: ${data.level || 'N/A'}</p>`;
 
-        if (data.ranked) {
-            html += '<h3>Ranked Stats</h3>';
-            html += `<ul>`;
-            html += `<li>Tier: ${data.ranked.tier || 'N/A'} ${data.ranked.rank || ''}</li>`;
-            html += `<li>LP: ${data.ranked.lp || 'N/A'}</li>`;
-            html += `<li>Wins: ${data.ranked.wins || 'N/A'}</li>`;
-            html += `<li>Losses: ${data.ranked.losses || 'N/A'}</li>`;
-            if (data.ranked.wins && data.ranked.losses) {
-                const winrate = (data.ranked.wins / (data.ranked.wins + data.ranked.losses) * 100).toFixed(1);
-                html += `<li>Winrate: ${winrate}%</li>`;
-            }
-            html += `</ul>`;
-        } else {
-            html += '<h3>Ranked Stats</h3><p>Keine Ranked-Daten gefunden.</p>';
+        // Gesamt-Mastery
+        if (typeof data.totalMastery === 'number') {
+            html += `<p>Gesamt Mastery: ${data.totalMastery.toLocaleString('de-DE')}</p>`;
+        }
+
+        // Account-Erstellungsdatum
+        if (data.accountCreated) {
+            const date = new Date(data.accountCreated);
+            html += `<p>Account erstellt am: ${date.toLocaleDateString('de-DE')}</p>`;
         }
 
         if (data.masteryTop3 && data.masteryTop3.length) {
             html += '<h3>Meistgespielte Champions</h3>';
             html += '<ol style="display:flex;gap:20px;list-style:none;padding:0;">';
             data.masteryTop3.forEach(champ => {
-                // championId kann Zahl oder String sein
                 let champData = champMap[String(champ.championId)];
                 if (!champData) champData = champMap[champ.championId];
                 if (champData) {
@@ -82,6 +76,31 @@ document.addEventListener('DOMContentLoaded', async function() {
             });
             html += '</ol>';
         }
+
+        // Letzte 10 Spiele
+        if (data.matches && Array.isArray(data.matches) && data.matches.length) {
+            html += '<h3>Letzte 10 Spiele</h3>';
+            html += '<table style="width:100%;border-collapse:collapse;font-size:0.98em;">';
+            html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Ergebnis</th></tr></thead><tbody>';
+            data.matches.slice(0, 10).forEach(match => {
+                let champData = champMap[String(match.championId)] || champMap[match.championId];
+                const champName = champData ? champData.name : `ID ${match.championId}`;
+                const champImg = champData ? `<img src="${champData.imageUrl}" alt="${champName}" style="width:32px;height:32px;vertical-align:middle;">` : '';
+                const kda = `${match.kills}/${match.deaths}/${match.assists}`;
+                const cs = match.cs !== undefined ? match.cs : '-';
+                const duration = match.duration ? `${Math.floor(match.duration/60)}:${('0'+(match.duration%60)).slice(-2)}` : '-';
+                const result = match.win ? 'Sieg' : 'Niederlage';
+                html += `<tr style="text-align:center;">
+                    <td>${champImg} ${champName}</td>
+                    <td>${kda}</td>
+                    <td>${cs}</td>
+                    <td>${duration}</td>
+                    <td>${result}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+        }
+
         container.innerHTML = html;
     } catch (err) {
         container.innerHTML = `<p style=\"color:red;\">Fehler beim Laden der Statistiken: ${err.message}</p>`;
