@@ -5,19 +5,34 @@ document.addEventListener('DOMContentLoaded', async function() {
     const container = document.getElementById('lol-stats-container');
     container.innerHTML = '<p>Lade Statistiken ...</p>';
 
-    // Mapping Champion-IDs zu Namen (minimal, für Demo; für alle Champs Data Dragon nutzen)
-    const champMap = {
-        37: 'Sona',
-        101: 'Xerath',
-        80: 'Pantheon'
-        // ...weitere nach Bedarf
-    };
+    // Data Dragon Patch-Version (ggf. aktuell halten)
+    const PATCH = '14.19.1';
+    const CHAMPION_FULL_URL = `https://ddragon.leagueoflegends.com/cdn/${PATCH}/data/en_US/championFull.json`;
+
+    // Hilfsfunktion: ChampionId → {name, imageUrl}
+    async function getChampionMap() {
+        const res = await fetch(CHAMPION_FULL_URL);
+        const data = await res.json();
+        // Mapping: id (als String) → {name, imageUrl}
+        const idToData = {};
+        for (const champName in data.keys) {
+            const id = data.keys[champName];
+            idToData[id] = {
+                name: champName,
+                imageUrl: `https://ddragon.leagueoflegends.com/cdn/${PATCH}/img/champion/${champName}.png`
+            };
+        }
+        return idToData;
+    }
 
     try {
         // Neue API-Route: /lol/Nirlau61/EUW/euw
         const response = await fetch('https://api.nirlau.de/lol/Nirlau61/EUW/euw');
         if (!response.ok) throw new Error('Fehler beim Laden der Daten');
         const data = await response.json();
+
+        // Champion-Mapping laden
+        const champMap = await getChampionMap();
 
         let html = '';
         html += `<h2>Summoner: Nirlau61</h2>`;
@@ -41,15 +56,23 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         if (data.masteryTop3 && data.masteryTop3.length) {
             html += '<h3>Meistgespielte Champions</h3>';
-            html += '<ol>';
+            html += '<ol style="display:flex;gap:20px;list-style:none;padding:0;">';
             data.masteryTop3.forEach(champ => {
-                const name = champMap[champ.championId] || `Champion-ID ${champ.championId}`;
-                html += `<li>${name} (${champ.points} Punkte)</li>`;
+                const champData = champMap[String(champ.championId)];
+                if (champData) {
+                    html += `<li style="text-align:center;">
+                        <img src="${champData.imageUrl}" alt="${champData.name}" style="width:64px;height:64px;display:block;margin:0 auto 8px;">
+                        <div>${champData.name}</div>
+                        <div style="font-size:0.9em;color:#666;">${champ.points} Punkte</div>
+                    </li>`;
+                } else {
+                    html += `<li>Champion-ID ${champ.championId} (${champ.points} Punkte)</li>`;
+                }
             });
             html += '</ol>';
         }
         container.innerHTML = html;
     } catch (err) {
-        container.innerHTML = `<p style="color:red;">Fehler beim Laden der Statistiken: ${err.message}</p>`;
+        container.innerHTML = `<p style=\"color:red;\">Fehler beim Laden der Statistiken: ${err.message}</p>`;
     }
 });
