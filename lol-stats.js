@@ -15,11 +15,20 @@ document.addEventListener('DOMContentLoaded', async function() {
         const data = await res.json();
         // Mapping: id (als String) → {name, imageUrl}
         const idToData = {};
+        // Data.keys: {"Sona": "37", ...}
         for (const champName in data.keys) {
             const id = data.keys[champName];
             idToData[id] = {
                 name: champName,
                 imageUrl: `https://ddragon.leagueoflegends.com/cdn/${PATCH}/img/champion/${champName}.png`
+            };
+        }
+        // Fallback: auch alle championId als Zahl und String mappen
+        for (const champName in data.data) {
+            const champ = data.data[champName];
+            idToData[champ.key] = {
+                name: champ.id,
+                imageUrl: `https://ddragon.leagueoflegends.com/cdn/${PATCH}/img/champion/${champ.id}.png`
             };
         }
         return idToData;
@@ -58,7 +67,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             html += '<h3>Meistgespielte Champions</h3>';
             html += '<ol style="display:flex;gap:20px;list-style:none;padding:0;">';
             data.masteryTop3.forEach(champ => {
-                const champData = champMap[String(champ.championId)];
+                // championId kann Zahl oder String sein
+                let champData = champMap[String(champ.championId)];
+                if (!champData) champData = champMap[champ.championId];
                 if (champData) {
                     html += `<li style="text-align:center;">
                         <img src="${champData.imageUrl}" alt="${champData.name}" style="width:64px;height:64px;display:block;margin:0 auto 8px;">
