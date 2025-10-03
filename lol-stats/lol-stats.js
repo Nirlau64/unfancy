@@ -6,17 +6,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     container.innerHTML = '<p>Lade Statistiken ...</p>';
 
     // -- häufige Queues als lesbarer Name --
-    const QUEUE_MAP = {
-      420: "Ranked Solo 5v5",
-      440: "Ranked Flex 5v5",
-      430: "Normal Blind",
-      400: "Normal Draft",
-      450: "ARAM",
-      700: "Clash",
-      830: "Coop vs AI (Intro)",
-      840: "Coop vs AI (Beginner)",
-      850: "Coop vs AI (Intermediate)"
-    };
+    let QUEUE_MAP = {};
     const readableMode = (match) => {
       // bevorzugt: falls der Worker das schon liefert
       if (match.gameModeReadable) return match.gameModeReadable;
@@ -37,9 +27,23 @@ document.addEventListener('DOMContentLoaded', async function() {
         return versions[0]; // neueste Version
     }
 
-    // PATCH and CHAMPION_FULL_URL will be set before use
+    // Data Dragon Queue-Info laden
+    async function getQueueMap() {
+        const res = await fetch('https://static.developer.riotgames.com/docs/lol/queues.json');
+        if (!res.ok) throw new Error('Fehler beim Abrufen der Queue-Daten');
+        const queues = await res.json();
+        const map = {};
+        for (const q of queues) {
+            map[q.queueId] = q.description || q.map || `Queue ${q.queueId}`;
+        }
+        return map;
+    }
+
+    // PATCH, CHAMPION_FULL_URL, QUEUE_MAP, champMap werden vor Nutzung gesetzt
     let PATCH = null;
     let CHAMPION_FULL_URL = null;
+    let QUEUE_MAP = {};
+    let champMap = {};
 
     async function main() {
         try {
@@ -48,7 +52,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             PATCH = '15.9.1'; // fallback
         }
         CHAMPION_FULL_URL = `https://ddragon.leagueoflegends.com/cdn/${PATCH}/data/en_US/championFull.json`;
-        console.log(CHAMPION_FULL_URL);
+        champMap = await getChampionMap();
+        QUEUE_MAP = await getQueueMap();
     }
     await main();
 
@@ -80,9 +85,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (!response.ok) throw new Error('Fehler beim Laden der Daten');
         const data = await response.json();
 
-        // Champion-Mapping laden
-        const champMap = await getChampionMap();
-
         let html = '';
         html += `<h2>Summoner: Nirlau61</h2>`;
         html += `<p>Level: ${data.level || 'N/A'}</p>`;
@@ -96,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         let created = data.accountCreatedAt || data.accountCreatedAtApprox;
         if (created) {
             const date = new Date(created);
-            html += `<p>Account erstellt am: ${date.toLocaleDateString('de-DE')}</p>`;
+            html += `<p>Account erstellt am: XX.XX.XXXX</p>`;
         }
 
         if (data.masteryTop3 && data.masteryTop3.length) {
@@ -135,8 +137,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             const duration = match.gameDuration ? `${Math.floor(match.gameDuration/60)}:${('0'+(match.gameDuration%60)).slice(-2)}` : '-';
 
             // Gamemode lesbar machen (QUEUE_MAP wie zuvor definiert)
-            const mode = match.gameModeReadable
-                || (typeof match.queueId === 'number' && QUEUE_MAP[match.queueId])
+            const mode = (typeof match.queueId === 'number' && QUEUE_MAP[match.queueId])
+                || match.gameModeReadable
                 || match.gameMode
                 || `Queue ${match.queueId ?? '-'}`;
 
