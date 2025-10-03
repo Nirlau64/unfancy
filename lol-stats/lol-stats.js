@@ -2,15 +2,39 @@
 // Fetches and displays League of Legends stats for Nirlau61#EUW from api.nirlau.de
 
 document.addEventListener('DOMContentLoaded', async function() {
-    const container = document.getElementById('lol-stats-container');
+    const container = document.getElementById('lol-stats-container');1
     container.innerHTML = '<p>Lade Statistiken ...</p>';
+
+    // -- häufige Queues als lesbarer Name --
+    const QUEUE_MAP = {
+      420: "Ranked Solo 5v5",
+      440: "Ranked Flex 5v5",
+      430: "Normal Blind",
+      400: "Normal Draft",
+      450: "ARAM",
+      700: "Clash",
+      830: "Coop vs AI (Intro)",
+      840: "Coop vs AI (Beginner)",
+      850: "Coop vs AI (Intermediate)"
+    };
+    const readableMode = (match) => {
+      // bevorzugt: falls der Worker das schon liefert
+      if (match.gameModeReadable) return match.gameModeReadable;
+      // sonst: aus queueId mappen
+      if (typeof match.queueId === "number" && QUEUE_MAP[match.queueId]) return QUEUE_MAP[match.queueId];
+      // Fallback: gameMode-String (CLASSIC, ARAM, URF, …)
+      if (match.gameMode) return match.gameMode;
+      // letzter Fallback: Queue-ID anzeigen
+      if (match.queueId != null) return `Queue ${match.queueId}`;
+      return "-";
+    };
 
     // Data Dragon Patch-Version (ggf. aktuell halten)
     async function getLatestDDragonVersion() {
         const res = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
         if (!res.ok) throw new Error('Fehler beim Abrufen der Version');
         const versions = await res.json();
-        return versions[0]; // erstes Element ist die neueste Version
+        return versions[0]; // neueste Version
     }
 
     // PATCH and CHAMPION_FULL_URL will be set before use
@@ -32,9 +56,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     async function getChampionMap() {
         const res = await fetch(CHAMPION_FULL_URL);
         const data = await res.json();
-        // Mapping: id (als String) → {name, imageUrl}
         const idToData = {};
-        // Data.keys: {"Sona": "37", ...}
         for (const champName in data.keys) {
             const id = data.keys[champName];
             idToData[id] = {
@@ -42,7 +64,6 @@ document.addEventListener('DOMContentLoaded', async function() {
                 imageUrl: `https://ddragon.leagueoflegends.com/cdn/${PATCH}/img/champion/${champName}.png`
             };
         }
-        // Fallback: auch alle championId als Zahl und String mappen
         for (const champName in data.data) {
             const champ = data.data[champName];
             idToData[champ.key] = {
@@ -100,8 +121,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Letzte 10 Spiele
         if (data.recentMatches && Array.isArray(data.recentMatches) && data.recentMatches.length) {
             html += '<h3>Letzte 10 Spiele</h3>';
-            html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.98em;min-width:480px;">';
-            html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Ergebnis</th></tr></thead><tbody>';
+            html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.98em;min-width:560px;">';
+            html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Gamemode</th><th>Ergebnis</th></tr></thead><tbody>';
             data.recentMatches.slice(0, 10).forEach(match => {
                 if (!match.you) return;
                 let champData = champMap[String(match.you.championId)] || champMap[match.you.championId];
@@ -110,13 +131,14 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const kda = `${match.you.kills}/${match.you.deaths}/${match.you.assists}`;
                 const cs = match.you.cs !== undefined ? match.you.cs : '-';
                 const duration = match.gameDuration ? `${Math.floor(match.gameDuration/60)}:${('0'+(match.gameDuration%60)).slice(-2)}` : '-';
+                const mode = readableMode(match);
                 const result = match.you.win ? 'Sieg' : 'Niederlage';
                 html += `<tr style="text-align:center;">
                     <td>${champImg} ${champName}</td>
-                    <td>${gamemode}</td>
                     <td>${kda}</td>
                     <td>${cs}</td>
                     <td>${duration}</td>
+                    <td>${mode}</td>
                     <td>${result}</td>
                 </tr>`;
             });
@@ -125,6 +147,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         container.innerHTML = html;
     } catch (err) {
-        container.innerHTML = `<p style=\"color:red;\">Fehler beim Laden der Statistiken: ${err.message}</p>`;
+        container.innerHTML = `<p style="color:red;">Fehler beim Laden der Statistiken: ${err.message}</p>`;
     }
 });
