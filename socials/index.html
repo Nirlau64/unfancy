@@ -5,7 +5,6 @@
   <title>Socials – Neueste Posts</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="icon" href="https://cdn.iconscout.com/icon/premium/png-256-thumb/no-attribution-icon-svg-download-png-2396447.png?f=webp" type="image/png">
   <link rel="stylesheet" href="../style.css" />
   <link rel="stylesheet" href="./socials.css" />
 </head>
@@ -15,53 +14,38 @@
 
     <section class="social-section">
       <header class="social-header">
-        <!-- YouTube Icon -->
-        <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="currentColor" d="M23.5 6.2a4 4 0 0 0-2.8-2.8C18.9 3 12 3 12 3s-6.9 0-8.7.4A4 4 0 0 0 .5 6.2 41 41 0 0 0 0 12a41 41 0 0 0 .5 5.8 4 4 0 0 0 2.8 2.8C5.1 21 12 21 12 21s6.9 0 8.7-.4a4 4 0 0 0 2.8-2.8A41 41 0 0 0 24 12a41 41 0 0 0-.5-5.8Z"/>
-            <path fill="#fff" d="M9.75 8.5v7l6-3.5-6-3.5Z"/>
-        </svg>
+        <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#FF0000"/><polygon points="10,8 16,12 10,16" fill="#fff"/></svg>
         <h2>Letztes YouTube-Video</h2>
         <a class="profile-link" href="https://www.youtube.com/@Nirlau61" target="_blank" rel="noopener">Profil öffnen</a>
       </header>
-      <div id="youtube-latest" class="embed-wrap" role="region" aria-live="polite">
-        <p class="loading">Lade letztes Video…</p>
+      <div class="yt-16x9" style="margin:1em auto;">
+        <!-- Manuell das letzte Video einbetten -->
+        <iframe
+          src="https://www.youtube.com/embed/3me98J7VB1w"
+          title="Bestes YouTube-Video"
+          loading="lazy"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen></iframe>
       </div>
     </section>
 
     <section class="social-section">
       <header class="social-header">
-        <!-- Instagram Icon -->
-        <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
-          <path fill="currentColor" d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Z"/>
-          <circle fill="#fff" cx="12" cy="12" r="3.5"/>
-          <circle fill="#fff" cx="17.5" cy="6.5" r="1"/>
-        </svg>
+        <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#E1306C"/><circle cx="12" cy="12" r="5" fill="#fff"/><circle cx="18" cy="6" r="1.5" fill="#fff"/></svg>
         <h2>Letzter Instagram-Post</h2>
         <a class="profile-link" href="https://www.instagram.com/nirlau61/" target="_blank" rel="noopener">Profil öffnen</a>
       </header>
-
-      <div id="instagram-latest" class="embed-wrap" role="region" aria-live="polite">
-        <p class="loading">Lade letzten Post…</p>
+      <div style="margin:1em auto;text-align:center;">
+        <!-- Manuell letzten Post verlinken -->
+        <a href="https://www.instagram.com/p/DKpXzNHMT6G/" target="_blank" rel="noopener">
+          <img src="https://instagram.com/p/DKpXzNHMT6G/media/?size=l" alt="Letzter Instagram-Post" style="max-width:320px;border-radius:12px;">
+        </a>
       </div>
-      <!-- Instagram Embed Runtime -->
-      <script async src="https://www.instagram.com/embed.js"></script>
     </section>
 
-    <footer class="note">
-      <p>Hinweis: Läuft rein clientseitig über eine CORS-kompatible Fetch-Methode. Keine API-Keys notwendig.</p>
-    </footer>
+    <p style="max-width:900px;margin:40px auto 0;text-align:center;">
+      <a href="../index.html">Zurück zur Startseite</a>
+    </p>
   </main>
-
-  <script>
-    window.SOCIALS_CONFIG = {
-      youtubeHandle: "@Nirlau61",
-      instagramUser: "nirlau61"
-    };
-  </script>
-  <script src="./socials.js" type="module"></script>
-</body>
-<body>
-    <div id="socials-container"></div>
-    <p style="max-width:900px;margin:40px auto 0;text-align:center;"><a href="../index.html">Zurück zur Startseite</a></p>
 </body>
 </html>
