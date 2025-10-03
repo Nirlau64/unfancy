@@ -124,24 +124,33 @@ document.addEventListener('DOMContentLoaded', async function() {
             html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.98em;min-width:560px;">';
             html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Gamemode</th><th>Ergebnis</th></tr></thead><tbody>';
             data.recentMatches.slice(0, 10).forEach(match => {
-                if (!match.you) return;
-                let champData = champMap[String(match.you.championId)] || champMap[match.you.championId];
-                const champName = champData ? champData.name : `ID ${match.you.championId}`;
-                const champImg = champData ? `<img src="${champData.imageUrl}" alt="${champName}" style="width:32px;height:32px;vertical-align:middle;">` : '';
-                const kda = `${match.you.kills}/${match.you.deaths}/${match.you.assists}`;
-                const cs = match.you.cs !== undefined ? match.you.cs : '-';
-                const duration = match.gameDuration ? `${Math.floor(match.gameDuration/60)}:${('0'+(match.gameDuration%60)).slice(-2)}` : '-';
-                const mode = readableMode(match);
-                const result = match.you.win ? 'Sieg' : 'Niederlage';
-                html += `<tr style="text-align:center;">
-                    <td>${champImg} ${champName}</td>
-                    <td>${kda}</td>
-                    <td>${cs}</td>
-                    <td>${duration}</td>
-                    <td>${mode}</td>
-                    <td>${result}</td>
-                </tr>`;
-            });
+            if (!match.you) return;
+
+            const champData = champMap[String(match.you.championId)] || champMap[match.you.championId];
+            const champName = champData ? champData.name : `ID ${match.you.championId}`;
+            const champImg  = champData ? `<img src="${champData.imageUrl}" alt="${champName}" style="width:32px;height:32px;vertical-align:middle;">` : '';
+
+            const kda      = `${match.you.kills}/${match.you.deaths}/${match.you.assists}`;
+            const cs       = match.you.cs !== undefined ? match.you.cs : '-';
+            const duration = match.gameDuration ? `${Math.floor(match.gameDuration/60)}:${('0'+(match.gameDuration%60)).slice(-2)}` : '-';
+
+            // Gamemode lesbar machen (QUEUE_MAP wie zuvor definiert)
+            const mode = match.gameModeReadable
+                || (typeof match.queueId === 'number' && QUEUE_MAP[match.queueId])
+                || match.gameMode
+                || `Queue ${match.queueId ?? '-'}`;
+
+            const result = match.you.win ? 'Sieg' : 'Niederlage';
+
+            html += `<tr style="text-align:center;">
+                <td>${champImg} ${champName}</td>
+                <td>${kda}</td>
+                <td>${cs}</td>
+                <td>${duration}</td>
+                <td>${mode}</td>
+                <td>${result}</td>
+            </tr>`;
+});
             html += '</tbody></table>';
         }
 
