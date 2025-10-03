@@ -7,10 +7,13 @@
   <link rel="stylesheet" href="../style.css">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <style>
+    /* nur auf dieser Seite: breitere Hauptkarte für 4 Spalten */
+    .main-card.steam { max-width: 1040px; }
+
     .steam-games-list {
       display: flex;
       flex-wrap: wrap;
-      gap: 32px;
+      gap: 24px;
       justify-content: center;
       margin-top: 2em;
       margin-bottom: 1.5em;
@@ -22,8 +25,7 @@
       border-radius: 12px;
       box-shadow: 0 2px 8px #0004;
       padding: 14px 12px 10px 12px;
-      min-width: 140px;
-      max-width: 160px;
+      width: 220px; /* feste Breite -> 4 Spalten bei ~1040px */
       text-align: center;
       transition: transform 0.15s;
     }
@@ -32,8 +34,8 @@
       box-shadow: 0 6px 24px #0007;
     }
     .steam-game-card img {
-      width: 120px;
-      height: 45px;
+      width: 200px;
+      height: 75px;
       object-fit: cover;
       border-radius: 8px;
       background: #222;
@@ -44,31 +46,26 @@
       font-weight: bold;
       color: var(--accent2, #7dd3fc);
       margin-bottom: 2px;
-      font-size: 1.08em;
+      font-size: 1.02em;
     }
     .steam-game-hours {
       color: #b5e0fa;
-      font-size: 0.98em;
+      font-size: 0.96em;
       margin-bottom: 2px;
     }
+    @media (max-width: 900px) {
+      .steam-game-card { width: 200px; }
+      .steam-game-card img { width: 180px; height: 68px; }
+    }
     @media (max-width: 700px) {
-      .steam-games-list {
-        gap: 12px;
-      }
-      .steam-game-card {
-        min-width: 110px;
-        max-width: 120px;
-        padding: 10px 4px 8px 4px;
-      }
-      .steam-game-card img {
-        width: 90px;
-        height: 34px;
-      }
+      .steam-games-list { gap: 12px; }
+      .steam-game-card { width: 150px; padding: 10px 6px 8px; }
+      .steam-game-card img { width: 130px; height: 48px; }
     }
   </style>
 </head>
 <body>
-  <div class="main-card">
+  <div class="main-card steam">
     <h1>Steam Stats</h1>
     <div id="steam-profile"></div>
     <div id="steam-stats-container"></div>
