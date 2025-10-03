@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Socials – Neueste Posts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../style.css" />
+  <link rel="stylesheet" href="./socials.css" />
+</head>
+<body>
+  <main class="main-card socials">
+    <h1>Socials</h1>
+
+    <section class="social-section">
+      <header class="social-header">
+        <img src="https://www.youtube.com/s/desktop/fe8b1f51/img/favicon_144x144.png" alt="" />
+        <h2>Letztes YouTube-Video</h2>
+        <a class="profile-link" href="https://www.youtube.com/@Nirlau61" target="_blank" rel="noopener">Profil öffnen</a>
+      </header>
+      <div id="youtube-latest" class="embed-wrap" role="region" aria-live="polite">
+        <p class="loading">Lade letztes Video…</p>
+      </div>
+    </section>
+
+    <section class="social-section">
+      <header class="social-header">
+        <img src="https://static.cdninstagram.com/rsrc.php/v3/yr/r/0guBQDYW-8H.png" alt="" />
+        <h2>Letzter Instagram-Post</h2>
+        <a class="profile-link" href="https://www.instagram.com/nirlau61/" target="_blank" rel="noopener">Profil öffnen</a>
+      </header>
+      <div id="instagram-latest" class="embed-wrap" role="region" aria-live="polite">
+        <p class="loading">Lade letzten Post…</p>
+      </div>
+      <!-- Instagram Embed Runtime -->
+      <script async src="https://www.instagram.com/embed.js"></script>
+    </section>
+
+    <footer class="note">
+      <p>Hinweis: Läuft rein clientseitig über eine CORS-kompatible Fetch-Methode. Keine API-Keys notwendig.</p>
+    </footer>
+  </main>
+
+  <script>
+    window.SOCIALS_CONFIG = {
+      youtubeHandle: "@Nirlau61",
+      instagramUser: "nirlau61"
+    };
+  </script>
+  <script src="./socials.js" type="module"></script>
+</body>
+</html>
