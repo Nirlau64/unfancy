@@ -6,6 +6,7 @@
     <title>League of Legends Stats</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
     <link rel="icon" href="https://cdn.iconscout.com/icon/premium/png-256-thumb/no-attribution-icon-svg-download-png-2396447.png?f=webp" type="image/png">
+    <link rel="stylesheet" href="../style.css">
     <style>
         :root {
             --bg: #181a20;
@@ -25,13 +26,14 @@
             min-height: 100vh;
         }
         #lol-stats-container {
-            max-width: 900px;
-            margin: 48px auto 0;
-            background: var(--bg-card);
-            border-radius: 18px;
-            box-shadow: var(--shadow);
-            padding: 36px 28px 32px 28px;
+            max-width: 900px;      /* optional */
+            margin: 0;             /* Karte übernimmt Abstände */
+            background: transparent;
+            border-radius: 0;
+            box-shadow: none;
+            padding: 0;
         }
+
         h2, h3 {
             color: var(--accent);
             margin-top: 0.5em;
