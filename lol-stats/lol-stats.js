@@ -13,17 +13,20 @@ document.addEventListener('DOMContentLoaded', async function() {
         return versions[0]; // erstes Element ist die neueste Version
     }
 
+    // PATCH and CHAMPION_FULL_URL will be set before use
+    let PATCH = null;
+    let CHAMPION_FULL_URL = null;
+
     async function main() {
-        let PATCH;
         try {
             PATCH = await getLatestDDragonVersion();
         } catch (e) {
             PATCH = '15.9.1'; // fallback
         }
-        const CHAMPION_FULL_URL = `https://ddragon.leagueoflegends.com/cdn/${PATCH}/data/en_US/championFull.json`;
+        CHAMPION_FULL_URL = `https://ddragon.leagueoflegends.com/cdn/${PATCH}/data/en_US/championFull.json`;
         console.log(CHAMPION_FULL_URL);
     }
-    main();
+    await main();
 
     // Hilfsfunktion: ChampionId → {name, imageUrl}
     async function getChampionMap() {
