@@ -123,15 +123,24 @@
             color: var(--accent);
         }
         @media (max-width: 700px) {
-            #lol-stats-container {
-                padding: 16px 4vw 18px 4vw;
-            }
-            .champ-list {
-                gap: 12px;
-            }
-            table, th, td {
-                font-size: 0.98em;
-            }
+        /* Champions nebeneinander umbrechen */
+        .champ-list {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .champ-list li {
+            min-width: 90px;
+            margin-bottom: 12px;
+        }
+        /* Tabelle in Container scrollbar machen */
+        #lol-stats-container {
+            overflow-x: auto;
+        }
+        #lol-stats-container table {
+            width: 100%;
+            min-width: 480px;
+            display: block;
+        }
         }
     </style>
     <script defer src="lol-stats.js"></script>

@@ -55,6 +55,7 @@ function imgWithFallback(candidates, alt) {
   return `
     <img src="${first}" alt="${alt}"
          style="width:184px;height:69px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px #000a;background:#111"
+            border-radius:8px;box-shadow:0 2px 8px #000a;background:#111;display:block"
          onerror="
            const el=this;
            const tryNext=()=>{
@@ -125,20 +126,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     .sort((a,b) => b.playtime_minutes - a.playtime_minutes)
     .slice(0, 16);
 
-  statsDiv.innerHTML = `
-    <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
-    <h3>Meistgespielte Spiele</h3>
-    <div style="display:grid;grid-template-columns:repeat(4,200px);gap:24px;justify-content:center;">
-      ${top.map(game => {
-        const imgs = buildImageCandidates(game.appid, game.img_logo_url);
-        return `
-          <div style="width:200px;text-align:center;">
-            ${imgWithFallback(imgs, game.name)}
-            <div style="margin-top:8px;font-weight:bold;">${game.name}</div>
-            <div style="opacity:.8;">${minutesToHours(game.playtime_minutes)} Std.</div>
-          </div>
-        `;
-      }).join("")}
-    </div>
-  `;
+statsDiv.innerHTML = `
+  <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
+  <h3>Meistgespielte Spiele</h3>
+  <div style="display:grid;
+              grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+              gap:16px;
+              justify-items:center;">
+    ${top.map(game => {
+       const imgs = buildImageCandidates(game.appid, game.img_logo_url);
+       return `
+         <div style="text-align:center;max-width:220px;width:100%;">
+           ${imgWithFallback(imgs, game.name)}
+           <div style="margin-top:8px;font-weight:bold;">${game.name}</div>
+           <div style="opacity:.8;">${minutesToHours(game.playtime_minutes)} Std.</div>
+         </div>`;
+     }).join("")}
+  </div>`;
 });

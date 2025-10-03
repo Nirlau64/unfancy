@@ -22,3 +22,17 @@
 .profile-link:hover {
   background: #cc0000;      /* dunkler beim Hover */
 }
+
+@media (max-width: 600px) {
+  .main-card.socials {
+    max-width: 100%;
+    margin: 40px 12px;
+    padding: 20px;
+  }
+  .social-section {
+    padding: 12px;
+    margin: 12px 0;
+  }
+  .social-header h2 { font-size: 1rem; }
+  .profile-link { font-size: 0.8rem; }
+}

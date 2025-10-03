@@ -69,3 +69,18 @@ footer p {
     font-size: 1em;
     margin-top: 40px;
 }
+
+/* Ab 600 px Breite beginnen die mobilen Anpassungen */
+@media (max-width: 600px) {
+  .main-card {
+    max-width: 90%;
+    margin-top: 40px;
+    padding: 24px 16px;
+  }
+  h1 { font-size: 1.8em; }
+  p { font-size: 1em; }
+  a.stats-link {
+    padding: 10px 20px;
+    font-size: 1em;
+  }
+}
