@@ -46,7 +46,7 @@ p {
 }
 a.stats-link {
     display: inline-block;
-    margin-top: 18px;
+    margin-top: 32px;
     background: var(--accent);
     color: #fff;
     padding: 12px 28px;
