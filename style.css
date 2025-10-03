@@ -26,7 +26,7 @@ body{
 }
 
 .main-card {
-    max-width: 520px;
+    max-width: 70%;
     /* kein auto mehr nötig, Flex übernimmt das Centering */
     margin: 80px 0 0 0;
     background: var(--bg-card);
