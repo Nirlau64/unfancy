@@ -123,7 +123,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const top = gamesFiltered
     .slice() // Kopie
     .sort((a,b) => b.playtime_minutes - a.playtime_minutes)
-    .slice(0, 10);
+    .slice(0, 16);
 
   statsDiv.innerHTML = `
     <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
