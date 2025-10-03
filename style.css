@@ -17,10 +17,12 @@ html, body {
     min-height: 100vh;
 }
 /* Neu: horizontales Centering global */
-body {
-    display: flex;
-    justify-content: center;  /* horizontal zentriert */
-    align-items: flex-start;  /* oben ausgerichtet; für vertikal mittig -> center */
+body{
+  display:flex;
+  flex-direction:column;
+  align-items:center;      /* horizontal zentriert */
+  justify-content:flex-start; /* nicht vertikal zentrieren */
+  min-height:100vh;
 }
 
 .main-card {
