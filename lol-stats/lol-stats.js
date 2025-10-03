@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         if (data.masteryTop3 && data.masteryTop3.length) {
             html += '<h3>Meistgespielte Champions</h3>';
-            html += '<ol style="display:flex;gap:20px;list-style:none;padding:0;">';
+            html += '<ol style="display:flex;flex-wrap:wrap;justify-content:center;gap:12px;list-style:none;padding:0;">';
             data.masteryTop3.forEach(champ => {
                 let champData = champMap[String(champ.championId)];
                 if (!champData) champData = champMap[champ.championId];
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Letzte 10 Spiele
         if (data.recentMatches && Array.isArray(data.recentMatches) && data.recentMatches.length) {
             html += '<h3>Letzte 10 Spiele</h3>';
-            html += '<table style="width:100%;border-collapse:collapse;font-size:0.98em;">';
+            html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.98em;min-width:480px;">';
             html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Ergebnis</th></tr></thead><tbody>';
             data.recentMatches.slice(0, 10).forEach(match => {
                 if (!match.you) return;
