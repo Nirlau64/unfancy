@@ -6,8 +6,24 @@ document.addEventListener('DOMContentLoaded', async function() {
     container.innerHTML = '<p>Lade Statistiken ...</p>';
 
     // Data Dragon Patch-Version (ggf. aktuell halten)
-    const PATCH = '14.19.1';
-    const CHAMPION_FULL_URL = `https://ddragon.leagueoflegends.com/cdn/${PATCH}/data/en_US/championFull.json`;
+    async function getLatestDDragonVersion() {
+        const res = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+        if (!res.ok) throw new Error('Fehler beim Abrufen der Version');
+        const versions = await res.json();
+        return versions[0]; // erstes Element ist die neueste Version
+    }
+
+    async function main() {
+        let PATCH;
+        try {
+            PATCH = await getLatestDDragonVersion();
+        } catch (e) {
+            PATCH = '15.9.1'; // fallback
+        }
+        const CHAMPION_FULL_URL = `https://ddragon.leagueoflegends.com/cdn/${PATCH}/data/en_US/championFull.json`;
+        console.log(CHAMPION_FULL_URL);
+    }
+    main();
 
     // Hilfsfunktion: ChampionId → {name, imageUrl}
     async function getChampionMap() {
