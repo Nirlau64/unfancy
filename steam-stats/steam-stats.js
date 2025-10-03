@@ -128,7 +128,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   statsDiv.innerHTML = `
     <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
     <h3>Meistgespielte Spiele</h3>
-    <div style="display:flex;flex-wrap:wrap;gap:24px;">
+    <div style="display:grid;grid-template-columns:repeat(4,200px);gap:24px;justify-content:center;">
       ${top.map(game => {
         const imgs = buildImageCandidates(game.appid, game.img_logo_url);
         return `
