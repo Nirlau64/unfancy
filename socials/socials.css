@@ -36,3 +36,11 @@
   .social-header h2 { font-size: 1rem; }
   .profile-link { font-size: 0.8rem; }
 }
+
+@media (min-width: 768px) {
+  .yt-16x9 {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}

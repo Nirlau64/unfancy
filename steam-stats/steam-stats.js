@@ -130,7 +130,8 @@ statsDiv.innerHTML = `
   <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
   <h3>Meistgespielte Spiele</h3>
   <div style="display:grid;
-              grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+              /* ab 1040 px Containerbreite sind es 4 Spalten (220 px min pro Karte) */
+              grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
               gap:16px;
               justify-items:center;">
     ${top.map(game => {
