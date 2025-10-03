@@ -113,6 +113,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const result = match.you.win ? 'Sieg' : 'Niederlage';
                 html += `<tr style="text-align:center;">
                     <td>${champImg} ${champName}</td>
+                    <td>${gamemode}</td>
                     <td>${kda}</td>
                     <td>${cs}</td>
                     <td>${duration}</td>
