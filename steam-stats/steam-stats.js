@@ -130,14 +130,13 @@ statsDiv.innerHTML = `
   <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
   <h3>Meistgespielte Spiele</h3>
   <div style="display:grid;
-              /* ab 1040 px Containerbreite sind es 4 Spalten (220 px min pro Karte) */
               grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
               gap:16px;
               justify-items:center;">
     ${top.map(game => {
        const imgs = buildImageCandidates(game.appid, game.img_logo_url);
        return `
-         <div style="text-align:center;max-width:220px;width:100%;">
+         <div style="text-align:center;width:100%;max-width:220px;">
            ${imgWithFallback(imgs, game.name)}
            <div style="margin-top:8px;font-weight:bold;">${game.name}</div>
            <div style="opacity:.8;">${minutesToHours(game.playtime_minutes)} Std.</div>
