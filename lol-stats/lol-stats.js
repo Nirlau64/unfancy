@@ -101,12 +101,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             html += '</ol>';
         }
 
-        // Letzte 10 Spiele
+        // Letzte 15 Spiele
         if (data.recentMatches && Array.isArray(data.recentMatches) && data.recentMatches.length) {
-            html += '<h3>Letzte 10 Spiele</h3>';
+            html += '<h3>Letzte 15 Spiele</h3>';
             html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.98em;min-width:560px;">';
             html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Gamemode</th><th>Ergebnis</th></tr></thead><tbody>';
-            data.recentMatches.slice(0, 10).forEach(match => {
+            data.recentMatches.slice(0, 15).forEach(match => {
                 if (!match.you) return;
                 const cd   = champMap[String(match.you.championId)] || champMap[match.you.championId];
                 const cName = cd ? cd.name : `ID ${match.you.championId}`;
