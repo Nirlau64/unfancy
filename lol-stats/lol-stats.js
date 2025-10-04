@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (data.recentMatches && Array.isArray(data.recentMatches) && data.recentMatches.length) {
             html += '<h3>Letzte 10 Spiele</h3>';
             html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.98em;min-width:560px;">';
-            html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Gamemode</th><th>Ergebnis</th></tr></thead><tbody>';
+            html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Gamemode</th><th>Ergebnis / Platz</th></tr></thead><tbody>';
             data.recentMatches.slice(0, 10).forEach(match => {
                 if (!match.you) return;
                 const cd   = champMap[String(match.you.championId)] || champMap[match.you.championId];
@@ -122,7 +122,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                     || match.gameMode
                     || `Queue ${match.queueId ?? '-'}`;
 
-                const result = match.you.win ? 'Sieg' : 'Niederlage';
+                let result;
+                if (match.isArena && typeof match.you.arenaPlacement === 'number') {
+                    result = `${match.you.arenaPlacement}. Platz`;
+                } else {
+                    result = match.you.win ? 'Sieg' : 'Niederlage';
+                }
 
                 html += `<tr style="text-align:center;">
                     <td>${cImg} ${cName}</td>
