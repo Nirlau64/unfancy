@@ -32,9 +32,10 @@ Neben der Startseite gibt es spezielle Unterseiten für:
 
 
 unfancy/
+
 ├── index.html              # Startseite
 ├── style.css               # Haupt-Stylesheet
-├── script.js               # allgemeine Logik & Effekte
+├── script.js               # allgemeine Logik & Effekt
 │
 ├── lol-stats/              # League-of-Legends-Stats
 │   ├── index.html
@@ -79,4 +80,5 @@ Kein kommerzielles Projekt.
 © 2025 Laurin — alle Rechte vorbehalten.
 
 ---
+
 
