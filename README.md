@@ -30,7 +30,7 @@ Neben der Startseite gibt es spezielle Unterseiten für:
 
 ## 🛠️ Aufbau des Projekts
 
-
+```
 unfancy/
 
 ├── index.html              # Startseite
@@ -48,7 +48,7 @@ unfancy/
 └── socials/                # Social-Links
 ├── index.html
 └── socials.js
-
+```
 
 ---
 
@@ -80,5 +80,6 @@ Kein kommerzielles Projekt.
 © 2025 Laurin — alle Rechte vorbehalten.
 
 ---
+
 
 
