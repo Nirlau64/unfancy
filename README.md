@@ -1,5 +1,3 @@
----
-
 # Unfancy — Persönliche Stats-Website
 
 **Unfancy** ist eine kleine, persönliche Web-App zum Sammeln und Anzeigen meiner Spieler-Statistiken.  
@@ -81,3 +79,4 @@ Kein kommerzielles Projekt.
 © 2025 Laurin — alle Rechte vorbehalten.
 
 ---
+
