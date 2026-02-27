@@ -4,6 +4,40 @@
     Ererbt alle globalen Stile von ../style.css und fügt nur das Nötigste hinzu.
 */
 
+/* Container für die Zeitraumbuttons */
+.time-range-buttons {
+    text-align: center;
+    margin-bottom: 2rem; /* Passender Abstand zu den folgenden Sektionen */
+}
+
+/* Styling der einzelnen Buttons */
+.time-range-buttons button {
+    background-color: transparent; /* Standardmäßig transparent */
+    color: var(--accent2, #7dd3fc); /* Nutzt die zweite Akzentfarbe für den Text */
+    border: 1px solid var(--accent2, #7dd3fc); /* Rand in der gleichen Farbe */
+    padding: 10px 20px; /* Großzügiges Padding für eine gute Klickfläche */
+    margin: 0 8px; /* Abstand zwischen den Buttons */
+    border-radius: 20px; /* Abgerundete Ecken */
+    cursor: pointer; /* Zeigt an, dass das Element klickbar ist */
+    font-family: 'Montserrat', sans-serif; /* Konsistente Schriftart */
+    font-weight: 600; /* Etwas fetter für bessere Lesbarkeit */
+    transition: background-color 0.2s ease, color 0.2s ease; /* Weiche Übergänge */
+}
+
+/* Hover-Effekt: Invertiert die Farben */
+.time-range-buttons button:hover {
+    background-color: var(--accent2, #7dd3fc);
+    color: var(--bg); /* Hintergrundfarbe des Hauptcontainers */
+}
+
+/* Aktiver Button: Dauerhaft invertiert, um den Status zu zeigen */
+.time-range-buttons button.active {
+    background-color: var(--accent2, #7dd3fc);
+    color: var(--bg);
+    font-weight: 700; /* Noch fetter, um die Auswahl zu betonen */
+}
+
+
 /* Sektionen (Aktuell, Top-Künstler, Top-Titel) 
    Keine Ränder oder abweichende Ausrichtungen mehr. */
 .section {
