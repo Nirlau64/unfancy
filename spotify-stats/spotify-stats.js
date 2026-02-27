@@ -6,11 +6,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const chartsContainer = document.getElementById('charts-container');
     let topArtistsChartInstance = null;
 
+    // Diese Funktion wird jetzt erst aufgerufen, NACHDEM Chart.js geladen ist.
+    async function initialize() {
+        await loadSpotifyData();
+        setInterval(loadSpotifyData, 30000); // Aktualisierung alle 30s
+    }
+
     async function fetchFromWorker(endpoint) {
         try {
-            const response = await fetch(`${WORKER_URL}${endpoint}`);
+            const cacheBuster = new Date().getTime();
+            const response = await fetch(`${WORKER_URL}${endpoint}?t=${cacheBuster}`);
             if (!response.ok) throw new Error(`Worker-Anfrage fehlgeschlagen: ${response.status}`);
-            if (response.status === 204) return null;
             return response.json();
         } catch (error) {
             console.error('Fehler beim Laden der Worker-Daten:', error);
@@ -20,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderNowPlaying(data) {
+        // ... (unverändert)
         let content = '';
         if (data && data.is_playing) {
             const track = data.item;
@@ -40,23 +47,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderTopArtists(data) {
-        if (!data || !data.items || data.items.length === 0) {
+        // ... (unverändert)
+        if (!data || !data.items || !data.items.length) {
             topArtistsListContainer.innerHTML = '<p>Top-Künstler konnten nicht geladen werden.</p>';
             chartsContainer.style.display = 'none';
             return;
         }
-
         const artists = data.items;
+        const popularityAvailable = artists[0]?.popularity !== undefined;
 
-        // SORTIERUNG: Primär nach Popularität (absteigend), sekundär alphabetisch.
-        const popularityAvailable = artists[0].popularity !== undefined;
-        if (popularityAvailable) {
-            artists.sort((a, b) => b.popularity - a.popularity);
-        } else {
-            artists.sort((a, b) => a.name.localeCompare(b.name));
-        }
+        if (popularityAvailable) artists.sort((a, b) => b.popularity - a.popularity);
+        else artists.sort((a, b) => a.name.localeCompare(b.name));
 
-        // 1. KACHEL-LISTE RENDERN
         let artistListHTML = '<h2>Top Künstler</h2><div class="artist-grid">';
         artists.forEach(artist => {
             const imageUrl = artist.images.find(img => img.width >= 160)?.url || artist.images[0]?.url;
@@ -70,29 +72,22 @@ document.addEventListener("DOMContentLoaded", () => {
         artistListHTML += '</div>';
         topArtistsListContainer.innerHTML = artistListHTML;
 
-        // 2. BALKENGRAFIK RENDERN (nur wenn Popularität vorhanden)
         if (!popularityAvailable) {
-            chartsContainer.style.display = 'none'; // Grafik ausblenden, wenn keine Daten da sind
+            chartsContainer.style.display = 'none';
             return;
         }
 
         chartsContainer.style.display = 'block';
-        if (topArtistsChartInstance) {
-            topArtistsChartInstance.destroy();
-        }
-        const ctx = document.getElementById('top-artists-chart').getContext('2d');
+        if (topArtistsChartInstance) topArtistsChartInstance.destroy();
         
-        // Wichtig: Labels und Daten aus den BEREITS SORTIERTEN Künstlern nehmen
-        const labels = artists.map(artist => artist.name);
-        const popularityData = artists.map(artist => artist.popularity);
-
+        const ctx = document.getElementById('top-artists-chart').getContext('2d');
         topArtistsChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels,
+                labels: artists.map(a => a.name),
                 datasets: [{
                     label: 'Popularität',
-                    data: popularityData,
+                    data: artists.map(a => a.popularity),
                     backgroundColor: 'rgba(30, 215, 96, 0.6)',
                     borderColor: 'rgba(30, 215, 96, 1)',
                     borderWidth: 1
@@ -100,30 +95,28 @@ document.addEventListener("DOMContentLoaded", () => {
             },
             options: {
                 indexAxis: 'y',
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
                 scales: {
                     x: { beginAtZero: true, max: 100, ticks: { color: 'rgba(255, 255, 255, 0.7)' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
                     y: { ticks: { color: 'rgba(255, 255, 255, 0.7)', font: { size: 10 } }, grid: { display: false } }
-                },
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } }
+                }
             }
         });
     }
 
     async function loadSpotifyData() {
-        const nowPlayingData = await fetchFromWorker('/now-playing');
+        const [nowPlayingData, topArtistsData] = await Promise.all([
+            fetchFromWorker('/now-playing'),
+            fetchFromWorker('/top-artists')
+        ]);
         renderNowPlaying(nowPlayingData);
-
-        const topArtistsData = await fetchFromWorker('/top-artists');
-        renderTopArtists(topArtistsData); // Neue, kombinierte Funktion aufrufen
+        renderTopArtists(topArtistsData);
     }
 
+    // KORREKTUR: Zuerst das Skript laden, DANN initialisieren.
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-    script.onload = () => {
-        loadSpotifyData();
-        setInterval(loadSpotifyData, 30000);
-    };
+    script.onload = initialize; // Die Hauptlogik wird erst nach dem Laden von Chart.js gestartet.
     document.head.appendChild(script);
 });
