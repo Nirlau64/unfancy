@@ -1,56 +1,76 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Welcome to Unfancy!');
 
-    // Create a container for JS demos
-    const demoContainer = document.createElement('div');
-    demoContainer.style.marginTop = '30px';
+    const spotifyStatusContainer = document.getElementById('spotify-status');
+    const steamStatusContainer = document.getElementById('steam-status');
+    const SPOTIFY_WORKER_URL = 'spotify.api.nirlau.de';
+    const STEAM_WORKER_URL = 'https://steam.api.nirlau.de';
+    const STEAMID = "76561198159661156"; // Your SteamID
 
-    // // --- Demo 1: Button Click with Time ---
-    // const btn = document.createElement('button');
-    // btn.textContent = 'Show Current Time';
-    // btn.style.marginRight = '10px';
+    async function fetchFromWorker(url) {
+        try {
+            const cacheBuster = new Date().getTime();
+            // Append cache buster correctly
+            const finalUrl = url.includes('?') ? `${url}&t=${cacheBuster}` : `${url}?t=${cacheBuster}`;
+            const response = await fetch(finalUrl);
+            if (!response.ok) {
+                throw new Error(`Worker request failed: ${response.status}`);
+            }
+            return response.json();
+        } catch (error) {
+            console.error('Error loading data from worker:', error);
+            return null;
+        }
+    }
 
-    // const output = document.createElement('p');
-    // output.id = 'js-demo-output';
+    async function loadSpotifyStatus() {
+        if (!spotifyStatusContainer) return;
 
-    // btn.addEventListener('click', function() {
-    //     const now = new Date();
-    //     output.textContent = `Current time: ${now.toLocaleTimeString()}`;
-    // });
+        const data = await fetchFromWorker(`${SPOTIFY_WORKER_URL}/now-playing`);
+        
+        let content = '';
+        if (data && data.is_playing) {
+            const track = data.item;
+            content = `
+                <div class="live-status-item">
+                    <p>🎧 Laurin hört gerade:</p>
+                    <div class="track">
+                        <img src="${track.album.images[0].url}" alt="Album Cover">
+                        <div class="track-info">
+                            <strong>${track.name}</strong>
+                            <span>${track.artists.map(a => a.name).join(', ')}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        spotifyStatusContainer.innerHTML = content;
+    }
 
-    // demoContainer.appendChild(btn);
-    // demoContainer.appendChild(output);
+    async function loadSteamStatus() {
+        if (!steamStatusContainer) return;
 
-    // // --- Demo 2: Live Counter ---
-    // const counterLabel = document.createElement('span');
-    // counterLabel.textContent = 'Counter: ';
-    // counterLabel.style.marginLeft = '30px';
+        const data = await fetchFromWorker(`${STEAM_WORKER_URL}/currently-playing?steamid=${STEAMID}`);
+        
+        let content = '';
+        if (data && data.game) {
+            content = `
+                <div class="live-status-item">
+                    <p>🎮 Laurin spielt gerade:</p>
+                    <div class="game">
+                        <strong>${data.game}</strong>
+                    </div>
+                </div>
+            `;
+        }
+        steamStatusContainer.innerHTML = content;
+    }
 
-    // const counterValue = document.createElement('span');
-    // counterValue.textContent = '0';
-    // counterValue.style.fontWeight = 'bold';
+    function loadLiveStatus() {
+        loadSpotifyStatus();
+        loadSteamStatus();
+    }
 
-    // let count = 0;
-    // setInterval(() => {
-    //     count++;
-    //     counterValue.textContent = count;
-    // }, 1000);
-
-    // demoContainer.appendChild(counterLabel);
-    // counterLabel.appendChild(counterValue);
-
-    // // --- Demo 3: Change Background Color ---
-    // const colorBtn = document.createElement('button');
-    // colorBtn.textContent = 'Random Background';
-    // colorBtn.style.marginLeft = '30px';
-
-    // colorBtn.addEventListener('click', function() {
-    //     const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
-    //     document.body.style.backgroundColor = randomColor;
-    // });
-
-    // demoContainer.appendChild(colorBtn);
-
-    // Add the demo container to the page
-    document.body.appendChild(demoContainer);
+    loadLiveStatus();
+    setInterval(loadLiveStatus, 30000);
 });

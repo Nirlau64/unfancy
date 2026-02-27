@@ -79,6 +79,62 @@ footer p {
     margin-top: 40px;
 }
 
+#live-status {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #1c1e24;
+    border-radius: 12px;
+}
+
+#spotify-status:not(:empty) {
+    margin-bottom: 15px;
+}
+
+.live-status-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.live-status-item p {
+    margin: 0;
+    font-size: 1em;
+    color: var(--accent2);
+}
+
+.live-status-item .track,
+.live-status-item .game {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.live-status-item .track img {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+}
+
+.live-status-item .track-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.live-status-item .track-info strong {
+    font-size: 1em;
+    font-weight: 700;
+}
+
+.live-status-item .track-info span {
+    font-size: 0.9em;
+    opacity: 0.8;
+}
+
+.live-status-item .game strong {
+    font-size: 1.1em;
+    font-weight: 700;
+}
+
 /* Ab 600 px Breite beginnen die mobilen Anpassungen */
 @media (max-width: 600px) {
   .main-card {

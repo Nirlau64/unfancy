@@ -54,8 +54,8 @@ function imgWithFallback(candidates, alt) {
   const dataAttrs = rest.map((url, i) => `data-src${i+1}=\"${url}\"`).join(" ");
   return `
     <img src=\"${first}\" alt=\"${alt}\"
-         style=\"width:184px;height:69px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px #000a;background:#111\"
-         onerror=\"
+         style=\"width:184px;height:69px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px #000a;background:#111\" 
+         onerror=\" 
            const el=this;
            const tryNext=()=>{
              const keys=[...el.attributes].map(a=>a.name).filter(n=>n.startsWith('data-src'));
@@ -67,20 +67,47 @@ function imgWithFallback(candidates, alt) {
              el.src=next;
            };
            tryNext();
-         \"
+         \" 
          ${dataAttrs}
     >
   `;
 }
 
-async function fetchProfile() {
-  const res = await fetch(`${API}/profile?steamid=${STEAMID}`);
-  return res.json();
+// Generic fetch function
+async function fetcher(url) {
+    const res = await fetch(url);
+    if (!res.ok) {
+        throw new Error(`Request failed: ${res.status}`);
+    }
+    return res.json();
 }
 
-async function fetchOwned() {
-  const res = await fetch(`${API}/owned?steamid=${STEAMID}`);
-  return res.json();
+
+async function loadSteamStatus() {
+    const steamStatusContainer = document.getElementById('steam-currently-playing');
+    if (!steamStatusContainer) return;
+
+    try {
+        const data = await fetcher(`${API}/currently-playing?steamid=${STEAMID}`);
+        let content = '';
+        if (data && data.game) {
+            content = `
+                <div class="live-status-item">
+                    <p style="text-align: center;">🎮 Laurin spielt gerade:</p>
+                    <div class="game" style="justify-content: center; display: flex;">
+                        <strong>${data.game}</strong>
+                    </div>
+                </div>
+                <hr>
+            `;
+        } else {
+            content = `<p style="text-align: center;">Momentan wird kein Spiel gespielt.</p><hr>`;
+        }
+        steamStatusContainer.innerHTML = content;
+    } catch (error) {
+        console.error('Error loading steam status:', error);
+        steamStatusContainer.innerHTML = `<p style="text-align: center; color: #ffcc00;">Live-Status konnte nicht geladen werden.</p><hr>`;
+    }
 }
 
 function minutesToHours(min) {
@@ -91,177 +118,181 @@ document.addEventListener("DOMContentLoaded", async () => {
   const profileDiv = document.getElementById("steam-profile");
   const statsDiv = document.getElementById("steam-stats-container");
 
+  // Load live status first and then periodically
+  loadSteamStatus();
+  setInterval(loadSteamStatus, 30000);
+
   // Profil
-  const profile = await fetchProfile();
-  if (profile.error) {
-    profileDiv.innerHTML = `<p>Fehler beim Laden des Profils: ${profile.error}</p>`;
-    return;
-  }
-  profileDiv.innerHTML = `
-    <div style=\"display:flex;align-items:center;gap:16px;\">
-      <img src=\"${profile.avatar}\" alt=\"Avatar\" style=\"width:64px;height:64px;border-radius:8px;\">
-      <div>
-        <strong>${profile.persona}</strong><br>
-        <a href=\"${profile.profileurl}\" target=\"_blank\" rel=\"noopener\">Steam-Profil öffnen</a>
-        ${profile.country ? `<span>Land: ${profile.country}</span>` : ""}
+  try {
+    const profile = await fetcher(`${API}/profile?steamid=${STEAMID}`);
+    profileDiv.innerHTML = `
+      <div style=\"display:flex;align-items:center;gap:16px;\">
+        <img src=\"${profile.avatar}\" alt=\"Avatar\" style=\"width:64px;height:64px;border-radius:8px;\">
+        <div>
+          <strong>${profile.persona}</strong><br>
+          <a href=\"${profile.profileurl}\" target=\"_blank\" rel=\"noopener\">Steam-Profil öffnen</a>
+          ${profile.country ? `<span>Land: ${profile.country}</span>` : ""}
+        </div>
       </div>
-    </div>
-    <hr>
-  `;
+      <hr>
+    `;
+  } catch (e) {
+      profileDiv.innerHTML = `<p>Fehler beim Laden des Profils.</p>`;
+  }
+
 
   // Spiele
-  const owned = await fetchOwned();
-  if (owned.error) {
-    statsDiv.innerHTML = `<p>Fehler beim Laden der Spiele: ${owned.error}</p>`;
-    return;
-  }
+  try {
+    const owned = await fetcher(`${API}/owned?steamid=${STEAMID}`);
+    // Tools rausfiltern
+    const gamesFiltered = (owned.games || []).filter(g => !isBlocked(g));
 
-  // Tools rausfiltern
-  const gamesFiltered = (owned.games || []).filter(g => !isBlocked(g));
+    const totalMinutes = gamesFiltered.reduce((s, g) => s + (g.playtime_minutes || 0), 0);
+    const top16 = gamesFiltered
+      .slice() // Kopie
+      .sort((a,b) => b.playtime_minutes - a.playtime_minutes)
+      .slice(0, 16);
 
-  const totalMinutes = gamesFiltered.reduce((s, g) => s + (g.playtime_minutes || 0), 0);
-  const top16 = gamesFiltered
-    .slice() // Kopie
-    .sort((a,b) => b.playtime_minutes - a.playtime_minutes)
-    .slice(0, 16);
+    const top10 = top16.slice(0, 10);
+    const top10Minutes = top10.reduce((sum, game) => sum + game.playtime_minutes, 0);
+    const otherMinutes = totalMinutes - top10Minutes;
 
-  const top10 = top16.slice(0, 10);
-  const top10Minutes = top10.reduce((sum, game) => sum + game.playtime_minutes, 0);
-  const otherMinutes = totalMinutes - top10Minutes;
+    statsDiv.innerHTML = `
+    <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
+    <h3>Meistgespielte Spiele</h3>
+    <div style=\"display:grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap:16px;
+                justify-items:center;\">
+      ${top16.map(game => {
+         const imgs = buildImageCandidates(game.appid, game.img_logo_url);
+         return `
+           <div style=\"text-align:center;width:100%;max-width:220px;\">
+             ${imgWithFallback(imgs, game.name)}
+             <div style=\"margin-top:8px;font-weight:bold;\">${game.name}</div>
+             <div style=\"opacity:.8;\">${minutesToHours(game.playtime_minutes)} Std.</div>
+           </div>`;
+       }).join("")}
+    </div>`;
 
-statsDiv.innerHTML = `
-  <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
-  <h3>Meistgespielte Spiele</h3>
-  <div style=\"display:grid;
-              grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-              gap:16px;
-              justify-items:center;\">
-    ${top16.map(game => {
-       const imgs = buildImageCandidates(game.appid, game.img_logo_url);
-       return `
-         <div style=\"text-align:center;width:100%;max-width:220px;\">
-           ${imgWithFallback(imgs, game.name)}
-           <div style=\"margin-top:8px;font-weight:bold;\">${game.name}</div>
-           <div style=\"opacity:.8;\">${minutesToHours(game.playtime_minutes)} Std.</div>
-         </div>`;
-     }).join("")}
-  </div>`;
+    const chartCanvas = document.getElementById('top-games-chart');
 
-  const chartCanvas = document.getElementById('top-games-chart');
-
-  const generateColors = (count) => {
-    const colors = [];
-    const baseColors = [
-        '#7dd3fc', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e',
-        '#f97316', '#facc15', '#4ade80', '#2dd4bf', '#a3e635'
-    ];
-    for (let i = 0; i < count; i++) {
-        colors.push(baseColors[i % baseColors.length]);
-    }
-    return colors;
-  };
-
-  const getOrCreateTooltip = (chart) => {
-      let tooltipEl = chart.canvas.parentNode.querySelector('div.chartjs-tooltip');
-      if (!tooltipEl) {
-          tooltipEl = document.createElement('div');
-          tooltipEl.classList.add('chartjs-tooltip');
-          tooltipEl.style.background = 'rgba(20, 22, 28, 0.9)';
-          tooltipEl.style.borderRadius = '8px';
-          tooltipEl.style.color = 'white';
-          tooltipEl.style.opacity = 1;
-          tooltipEl.style.pointerEvents = 'none';
-          tooltipEl.style.position = 'absolute';
-          tooltipEl.style.transform = 'translate(-50%, -110%)';
-          tooltipEl.style.transition = 'all .2s ease';
-          tooltipEl.style.padding = '12px';
-          tooltipEl.style.boxShadow = '0 4px 16px #000a';
-          tooltipEl.style.textAlign = 'center';
-          tooltipEl.style.border = '1px solid #2d313d';
-
-          const container = document.createElement('div');
-          tooltipEl.appendChild(container);
-          chart.canvas.parentNode.appendChild(tooltipEl);
+    const generateColors = (count) => {
+      const colors = [];
+      const baseColors = [
+          '#7dd3fc', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e',
+          '#f97316', '#facc15', '#4ade80', '#2dd4bf', '#a3e635'
+      ];
+      for (let i = 0; i < count; i++) {
+          colors.push(baseColors[i % baseColors.length]);
       }
-      return tooltipEl;
-  };
+      return colors;
+    };
 
-  const externalTooltipHandler = (context) => {
-      const { chart, tooltip } = context;
-      const tooltipEl = getOrCreateTooltip(chart);
+    const getOrCreateTooltip = (chart) => {
+        let tooltipEl = chart.canvas.parentNode.querySelector('div.chartjs-tooltip');
+        if (!tooltipEl) {
+            tooltipEl = document.createElement('div');
+            tooltipEl.classList.add('chartjs-tooltip');
+            tooltipEl.style.background = 'rgba(20, 22, 28, 0.9)';
+            tooltipEl.style.borderRadius = '8px';
+            tooltipEl.style.color = 'white';
+            tooltipEl.style.opacity = 1;
+            tooltipEl.style.pointerEvents = 'none';
+            tooltipEl.style.position = 'absolute';
+            tooltipEl.style.transform = 'translate(-50%, -110%)';
+            tooltipEl.style.transition = 'all .2s ease';
+            tooltipEl.style.padding = '12px';
+            tooltipEl.style.boxShadow = '0 4px 16px #000a';
+            tooltipEl.style.textAlign = 'center';
+            tooltipEl.style.border = '1px solid #2d313d';
 
-      if (tooltip.opacity === 0) {
-          tooltipEl.style.opacity = 0;
-          return;
-      }
+            const container = document.createElement('div');
+            tooltipEl.appendChild(container);
+            chart.canvas.parentNode.appendChild(tooltipEl);
+        }
+        return tooltipEl;
+    };
 
-      const tooltipContent = tooltipEl.querySelector('div');
+    const externalTooltipHandler = (context) => {
+        const { chart, tooltip } = context;
+        const tooltipEl = getOrCreateTooltip(chart);
 
-      if (tooltip.body) {
-          const dataIndex = tooltip.dataPoints[0].dataIndex;
-          const label = chart.data.labels[dataIndex];
-          const value = chart.data.datasets[0].data[dataIndex];
-          const hours = minutesToHours(value);
+        if (tooltip.opacity === 0) {
+            tooltipEl.style.opacity = 0;
+            return;
+        }
 
-          if (label === 'Andere') {
-              tooltipContent.innerHTML = `
-                  <div style=\"font-weight:bold;color:#f1f1f1;padding:8px;\">Andere Spiele</div>
-                  <div style=\"opacity:.8;font-size:0.9em;padding:0 8px 8px;\">${hours} Std.</div>
-              `;
-          } else {
-              const game = top10[dataIndex];
-              if (game) {
-                  const imgs = buildImageCandidates(game.appid, game.img_logo_url);
-                  tooltipContent.innerHTML = `
-                      ${imgWithFallback(imgs, game.name)}
-                      <div style=\"margin-top:8px;font-weight:bold;color:#f1f1f1;\">${game.name}</div>
-                      <div style=\"opacity:.8;font-size:0.9em;\">${hours} Std.</div>
-                  `;
-              }
-          }
-      }
+        const tooltipContent = tooltipEl.querySelector('div');
 
-      const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
-      tooltipEl.style.opacity = 1;
-      tooltipEl.style.left = positionX + tooltip.caretX + 'px';
-      tooltipEl.style.top = positionY + tooltip.caretY + 'px';
-  };
-  
-  const chartLabels = [...top10.map(g => g.name), 'Andere'];
-  const chartData = [...top10.map(g => g.playtime_minutes), otherMinutes];
-  const chartColors = [...generateColors(top10.length), '#6b7280'];
+        if (tooltip.body) {
+            const dataIndex = tooltip.dataPoints[0].dataIndex;
+            const label = chart.data.labels[dataIndex];
+            const value = chart.data.datasets[0].data[dataIndex];
+            const hours = minutesToHours(value);
 
-  new Chart(chartCanvas, {
-    type: 'pie',
-    data: {
-      labels: chartLabels,
-      datasets: [{
-        label: 'Spielstunden',
-        data: chartData,
-        backgroundColor: chartColors,
-        borderColor: '#181a20',
-        borderWidth: 2,
-        hoverOffset: 10
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: {
-            color: 'white',
-            padding: 20,
-            font: {
-              size: 12
+            if (label === 'Andere') {
+                tooltipContent.innerHTML = `
+                    <div style=\"font-weight:bold;color:#f1f1f1;padding:8px;\">Andere Spiele</div>
+                    <div style=\"opacity:.8;font-size:0.9em;padding:0 8px 8px;\">${hours} Std.</div>
+                `;
+            } else {
+                const game = top10[dataIndex];
+                if (game) {
+                    const imgs = buildImageCandidates(game.appid, game.img_logo_url);
+                    tooltipContent.innerHTML = `
+                        ${imgWithFallback(imgs, game.name)}
+                        <div style=\"margin-top:8px;font-weight:bold;color:#f1f1f1;\">${game.name}</div>
+                        <div style=\"opacity:.8;font-size:0.9em;\">${hours} Std.</div>
+                    `;
+                }
             }
+        }
+
+        const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
+        tooltipEl.style.opacity = 1;
+        tooltipEl.style.left = positionX + tooltip.caretX + 'px';
+        tooltipEl.style.top = positionY + tooltip.caretY + 'px';
+    };
+    
+    const chartLabels = [...top10.map(g => g.name), 'Andere'];
+    const chartData = [...top10.map(g => g.playtime_minutes), otherMinutes];
+    const chartColors = [...generateColors(top10.length), '#6b7280'];
+
+    new Chart(chartCanvas, {
+      type: 'pie',
+      data: {
+        labels: chartLabels,
+        datasets: [{
+          label: 'Spielstunden',
+          data: chartData,
+          backgroundColor: chartColors,
+          borderColor: '#181a20',
+          borderWidth: 2,
+          hoverOffset: 10
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: 'white',
+              padding: 20,
+              font: {
+                size: 12
+              }
+            }
+          },
+          tooltip: {
+            enabled: false,
+            external: externalTooltipHandler
           }
-        },
-        tooltip: {
-          enabled: false,
-          external: externalTooltipHandler
         }
       }
-    }
-  });
+    });
+  } catch(e) {
+      statsDiv.innerHTML = `<p>Fehler beim Laden der Spiele.</p>`;
+  }
 });
