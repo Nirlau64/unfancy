@@ -1,42 +1,16 @@
-/* Behalte die Breite der Karte bei */
-body .main-card {
-    width: 90%;
-    max-width: 800px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
 /* Stile für den "Aktuell läuft"-Bereich */
-.track {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-top: 10px;
-    background-color: rgba(255, 255, 255, 0.05);
-    padding: 10px;
-    border-radius: 8px;
-}
-
-.track img {
-    border-radius: 4px;
-    width: 64px;
-    height: 64px;
-}
-
-.track-info {
-    display: flex;
-    flex-direction: column;
-}
-
+.track { display: flex; align-items: center; gap: 15px; margin-top: 10px; background-color: rgba(255, 255, 255, 0.05); padding: 10px; border-radius: 8px; }
+.track img { border-radius: 4px; }
+.track-info { display: flex; flex-direction: column; }
 .track-info strong { font-size: 1.1em; }
 .track-info span { color: #b3b3b3; }
 
-/* NEU: Stile für die Künstlerliste */
-h2 {
+/* Stile für die Künstler-Kachel-Liste */
+#top-artists-list-container h2 {
     margin-top: 40px;
     border-bottom: 2px solid var(--accent, #3b82f6);
     padding-bottom: 5px;
-    margin-bottom: 20px; /* Abstand zur Liste */
+    margin-bottom: 20px;
 }
 
 .artist-grid {
@@ -55,26 +29,21 @@ h2 {
     transition: background-color 0.2s ease;
 }
 
-.artist-card:hover {
-    background-color: #3b3b3b;
+.artist-card:hover { background-color: #3b3b3b; }
+.artist-card img { width: 100%; border-radius: 50%; aspect-ratio: 1 / 1; object-fit: cover; margin-bottom: 10px; }
+.artist-card span { font-weight: bold; font-size: 0.9em; display: block; }
+
+/* Stile für den Chart-Container */
+#charts-container {
+    margin-top: 50px; /* Abstand zwischen Kacheln und Grafik */
+    height: 400px; /* Feste Höhe für die Grafik */
 }
 
-.artist-card img {
-    width: 100%;
-    border-radius: 50%; /* Runde Bilder für Künstler */
-    aspect-ratio: 1 / 1; /* Sorgt für perfekte Kreise */
-    object-fit: cover; /* Verhindert Verzerrungen */
-    margin-bottom: 10px;
-}
-
-.artist-card span {
-    font-weight: bold;
-    font-size: 0.9em;
-    display: block;
+#charts-container h2 {
+    margin-bottom: 20px;
+    text-align: center;
+    font-size: 1.5em;
 }
 
 /* Link am Ende */
-.stats-link {
-    margin-top: 30px;
-    display: inline-block;
-}
+.stats-link { margin-top: 30px; display: inline-block; }

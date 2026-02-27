@@ -4,9 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spotify Stats</title>
-    <link rel="stylesheet" href="../style.css"> <!-- Haupt-Stylesheet -->
+    <link rel="stylesheet" href="../style.css">
     <link rel="stylesheet" href="spotify-stats.css">
-    <!-- Chart.js wird nicht mehr benötigt -->
 </head>
 <body>
     <div class="main-card">
@@ -16,13 +15,18 @@
             <p>Lade Spotify-Daten...</p>
         </div>
 
-        <!-- Der Container für die Top-Künstler (vorher war es 'charts-container') -->
-        <div id="top-artists-container">
-            <!-- Die Künstlerliste wird hier vom JavaScript eingefügt -->
+        <!-- NEU: Container für die Künstler-Kacheln -->
+        <div id="top-artists-list-container">
+            <!-- Die Künstler-Kacheln werden hier vom JavaScript eingefügt -->
+        </div>
+
+        <!-- NEU: Container für die Grafik -->
+        <div id="charts-container">
+            <h2 class="chart-title">Popularitäts-Ranking</h2>
+            <canvas id="top-artists-chart"></canvas>
         </div>
 
         <a href="/" class="stats-link">→ Zurück zur Startseite</a>
-
     </div>
 
     <footer>
