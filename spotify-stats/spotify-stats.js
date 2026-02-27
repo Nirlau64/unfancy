@@ -1,22 +1,21 @@
 document.addEventListener("DOMContentLoaded", () => {
     const WORKER_URL = 'https://spotify-proxy.tools-309.workers.dev';
 
-    // Container aus dem HTML holen
     const spotifyContainer = document.getElementById('spotify-container');
     const topArtistsListContainer = document.getElementById('top-artists-list-container');
     const topTracksListContainer = document.getElementById('top-tracks-list-container');
 
-    // Initialisierungsfunktion, die alles startet
     async function initialize() {
+        if (!spotifyContainer || !topArtistsListContainer || !topTracksListContainer) {
+            console.error("One or more required containers are missing from the DOM.");
+            return;
+        }
         await loadSpotifyData();
-        // Daten alle 30 Sekunden neu laden
         setInterval(loadSpotifyData, 30000);
     }
 
-    // Funktion zum Abrufen der Daten vom Worker
     async function fetchFromWorker(endpoint) {
         try {
-            // Cache umgehen, um immer frische Daten zu bekommen
             const cacheBuster = new Date().getTime();
             const response = await fetch(`${WORKER_URL}${endpoint}?t=${cacheBuster}`);
             if (!response.ok) {
@@ -25,14 +24,15 @@ document.addEventListener("DOMContentLoaded", () => {
             return response.json();
         } catch (error) {
             console.error('Fehler beim Laden der Worker-Daten:', error);
-            // Fehler direkt auf der Seite anzeigen, falls etwas schiefgeht
-            spotifyContainer.innerHTML = `<p style="color: #ffcc00; text-align: center;">Fehler: Daten konnten nicht geladen werden.</p>`;
+            if (spotifyContainer) {
+                spotifyContainer.innerHTML = `<p style="color: #ffcc00; text-align: center;">Fehler: Daten konnten nicht geladen werden.</p>`;
+            }
             return null;
         }
     }
 
-    // Zeigt den aktuell laufenden Song an
     function renderNowPlaying(data) {
+        if (!spotifyContainer) return;
         let content = '';
         if (data && data.is_playing) {
             const track = data.item;
@@ -51,15 +51,13 @@ document.addEventListener("DOMContentLoaded", () => {
         spotifyContainer.innerHTML = content;
     }
 
-    // Zeigt die Top-Künstler an
     function renderTopArtists(data) {
-        // Fallback, falls keine Daten kommen
+        if (!topArtistsListContainer) return;
         if (!data || !data.items || !data.items.length) {
             topArtistsListContainer.innerHTML = '<p style="text-align: center;">Top-Künstler konnten nicht geladen werden.</p>';
             return;
         }
         const artists = data.items;
-        // HTML für die Künstler-Kacheln erstellen
         let artistListHTML = '<h2>Meine Top Künstler</h2><div class="artist-grid">';
         artists.forEach(artist => {
             const imageUrl = artist.images.find(img => img.width >= 160)?.url || artist.images[0]?.url;
@@ -74,15 +72,13 @@ document.addEventListener("DOMContentLoaded", () => {
         topArtistsListContainer.innerHTML = artistListHTML;
     }
 
-    // Zeigt die Top-Titel an (Diese Funktion hat gefehlt)
     function renderTopTracks(data) {
-        // Fallback, falls keine Daten kommen
+        if (!topTracksListContainer) return;
         if (!data || !data.items || !data.items.length) {
             topTracksListContainer.innerHTML = '<p style="text-align: center;">Top-Titel konnten nicht geladen werden.</p>';
             return;
         }
         const tracks = data.items;
-        // HTML für die Titel-Kacheln erstellen
         let trackListHTML = '<h2>Meine Top Titel</h2><div class="track-grid">';
         tracks.forEach(track => {
             const imageUrl = track.album.images.find(img => img.width >= 160)?.url || track.album.images[0]?.url;
@@ -98,8 +94,6 @@ document.addEventListener("DOMContentLoaded", () => {
         topTracksListContainer.innerHTML = trackListHTML;
     }
 
-
-    // Lädt alle Spotify-Daten parallel und ruft dann die Render-Funktionen auf
     async function loadSpotifyData() {
         const [nowPlayingData, topArtistsData, topTracksData] = await Promise.all([
             fetchFromWorker('/now-playing'),
@@ -108,10 +102,8 @@ document.addEventListener("DOMContentLoaded", () => {
         ]);
         renderNowPlaying(nowPlayingData);
         renderTopArtists(topArtistsData);
-        // Der Aufruf für die Top-Titel hat ebenfalls gefehlt
         renderTopTracks(topTracksData);
     }
 
-    // Startet den ganzen Prozess
     initialize();
 });

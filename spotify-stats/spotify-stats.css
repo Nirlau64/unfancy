@@ -6,18 +6,18 @@
 
 /* Sektionen (Aktuell, Top-Künstler, Top-Titel) 
    Keine Ränder oder abweichende Ausrichtungen mehr. */
-.spotify-section {
+.section {
     margin-top: 2rem;
     width: 100%;
 }
 
 /* Die erste Sektion hat keinen zusätzlichen oberen Abstand */
-.spotify-section:first-child {
+.section:first-child {
     margin-top: 0;
 }
 
 /* Überschriften für "Top Künstler" und "Top Titel" */
-.spotify-section h2 {
+.section h2 {
     font-size: 1.6em; /* Etwas größer für mehr Hierarchie */
     color: var(--text);
     margin-bottom: 1.5rem;
@@ -94,4 +94,27 @@
     border-radius: 8px;
     max-width: 400px; /* Maximale Breite, um auf großen Bildschirmen nicht zu zerfließen */
     text-align: left; /* Text innerhalb der Box ist linksbündig */
+}
+
+.track img {
+    width: 60px;
+    height: 60px;
+    border-radius: 4px;
+}
+
+.track-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.track-info strong {
+    font-weight: 700;
+    font-size: 1em;
+    color: var(--text);
+}
+
+.track-info span {
+    font-size: 0.9em;
+    color: var(--accent2);
 }

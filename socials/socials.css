@@ -1,5 +1,4 @@
 .main-card.socials { max-width: 1040px; margin: 0 auto; }
-.social-section { background: var(--bg-card, #23262f); border-radius: 14px; padding: 16px; margin: 20px 0; box-shadow: 0 2px 8px #0004; }
 .social-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .social-header img { width: 28px; height: 28px; border-radius: 6px; }
 .social-header h2 { font-size: 1.1rem; margin: 0; }
@@ -28,10 +27,6 @@
     max-width: 100%;
     margin: 40px 12px;
     padding: 20px;
-  }
-  .social-section {
-    padding: 12px;
-    margin: 12px 0;
   }
   .social-header h2 { font-size: 1rem; }
   .profile-link { font-size: 0.8rem; }

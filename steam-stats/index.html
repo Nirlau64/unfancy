@@ -5,47 +5,16 @@
   <title>Steam Stats</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="steam-stats.css">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <link rel="icon" href="https://cdn.iconscout.com/icon/premium/png-256-thumb/no-attribution-icon-svg-download-png-2396447.png?f=webp" type="image/png">
-  <style>
-    .steam-game-card:hover {
-      transform: translateY(-4px) scale(1.04);
-      box-shadow: 0 6px 24px #0007;
-    }
-    .steam-game-card img {
-      width: 200px;
-      height: 75px;
-      object-fit: cover;
-      border-radius: 8px;
-      background: #222;
-      margin-bottom: 8px;
-      box-shadow: 0 2px 8px #000a;
-    }
-    .steam-game-title {
-      font-weight: bold;
-      color: var(--accent2, #7dd3fc);
-      margin-bottom: 2px;
-      font-size: 1.02em;
-    }
-    .steam-game-hours {
-      color: #b5e0fa;
-      font-size: 0.96em;
-      margin-bottom: 2px;
-    }
-    .main-card.steam {
-        max-width: 1040px;
-        width: 100%;      /* neu: füllt den verfügbaren Platz */
-        margin: 40px auto;/* zentriert */
-        padding: 20px;
-    }
-  </style>
 </head>
 <body>
   <div class="main-card steam">
     <h1>Steam Stats</h1>
-    <div id="steam-profile"></div>
-    <div id="steam-stats-container"></div>
-    <div style="width: 80%; margin: 20px auto;">
+    <div id="steam-profile" class="section"></div>
+    <div id="steam-stats-container" class="section"></div>
+    <div style="width: 80%; margin: 20px auto;" class="section">
         <canvas id="top-games-chart"></canvas>
     </div>
     <a href="../index.html" class="stats-link">Zurück zur Startseite</a>

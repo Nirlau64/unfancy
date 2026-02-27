@@ -1,0 +1,30 @@
+.steam-game-card:hover {
+      transform: translateY(-4px) scale(1.04);
+      box-shadow: 0 6px 24px #0007;
+    }
+    .steam-game-card img {
+      width: 200px;
+      height: 75px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #222;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 8px #000a;
+    }
+    .steam-game-title {
+      font-weight: bold;
+      color: var(--accent2, #7dd3fc);
+      margin-bottom: 2px;
+      font-size: 1.02em;
+    }
+    .steam-game-hours {
+      color: #b5e0fa;
+      font-size: 0.96em;
+      margin-bottom: 2px;
+    }
+    .main-card.steam {
+        max-width: 1040px;
+        width: 100%;      /* neu: füllt den verfügbaren Platz */
+        margin: 40px auto;/* zentriert */
+        padding: 20px;
+    }
