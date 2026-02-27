@@ -1,10 +1,9 @@
 document.addEventListener("DOMContentLoaded", () => {
-    // ---- KONFIGURATION ----
     const WORKER_URL = 'https://spotifystats.tools-309.workers.dev'; 
-    // ---------------------
 
     const spotifyContainer = document.getElementById('spotify-container');
     const chartsContainer = document.getElementById('charts-container');
+    let topArtistsChartInstance = null; // FIX: Variable für die Chart-Instanz
 
     async function fetchFromWorker(endpoint) {
         try {
@@ -29,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
             content = `
                 <h3>Aktuell läuft:</h3>
                 <div class="track">
-                    <img src="${track.album.images[0].url}" alt="Album Cover" width="100" height="100">
+                    <img src="${track.album.images[0].url}" alt="Album Cover" width="64" height="64">
                     <div class="track-info">
                         <strong>${track.name}</strong>
                         <span>${track.artists.map(a => a.name).join(', ')}</span>
@@ -48,12 +47,18 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        // FIX: Zerstöre die alte Chart-Instanz, falls eine existiert
+        if (topArtistsChartInstance) {
+            topArtistsChartInstance.destroy();
+        }
+
         const ctx = document.getElementById('top-artists-chart').getContext('2d');
         
         const labels = data.items.map(artist => artist.name);
         const popularityData = data.items.map(artist => artist.popularity);
 
-        new Chart(ctx, {
+        // FIX: Weise die neue Chart der Instanz-Variable zu
+        topArtistsChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
@@ -70,17 +75,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 scales: {
                     x: {
                         beginAtZero: true,
-                        max: 100, // FIX: Skala von 0-100 erzwingen
+                        max: 100,
                         ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)' // STYLE: Helle Schrift für Achsenbeschriftung
+                            color: 'rgba(255, 255, 255, 0.7)'
                         },
                         grid: {
-                            color: 'rgba(255, 255, 255, 0.1)' // STYLE: Helle Gitterlinien
+                            color: 'rgba(255, 255, 255, 0.1)'
                         }
                     },
                     y: {
                         ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)' // STYLE: Helle Schrift für Achsenbeschriftung
+                            color: 'rgba(255, 255, 255, 0.7)'
                         },
                         grid: {
                             display: false

@@ -11,6 +11,8 @@
 
 .track img {
     border-radius: 4px;
+    width: 64px;  /* Kleinere Bilder */
+    height: 64px;
 }
 
 .track-info {
@@ -30,6 +32,7 @@
 .chart-wrapper {
     position: relative;
     height: 400px; /* Feste Höhe für die Grafik */
+    width: 100%;    /* FIX: Volle Breite erzwingen */
     margin-top: 15px;
 }
 
