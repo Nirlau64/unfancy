@@ -15,7 +15,7 @@ async function loadLatestYouTube() {
   try {
     const html = await xfetch(`https://www.youtube.com/${encodeURIComponent(YT_HANDLE)}/videos`);
     // Finde die erste Video-ID (kommt mehrfach vor, deshalb global suchen)
-    const m = html.match(/\/watch\?v=([0-9A-Za-z_-]{6,})/);
+    const m = html.match(/"videoId":"([0-9A-Za-z_-]{11})"/);
     if (!m) throw new Error("keine Video-ID gefunden");
     const videoId = m[1];
     // Titel optional
@@ -43,10 +43,10 @@ async function loadLatestInstagram() {
     const html = await xfetch(`https://www.instagram.com/${encodeURIComponent(IG_USER)}/`);
 
     // 1) Primär: JSON-Feld "shortcode"
-    let m = html.match(/"shortcode":"([0-9A-Za-z_-]{5,})"/);
+    let m = html.match(/"shortcode":"([0-9A-Za-z_-]{11})"/);
 
     // 2) Fallback: erster Link /p/<id>/
-    if (!m) m = html.match(/href="\/p\/([0-9A-Za-z_-]{5,})\//);
+    if (!m) m = html.match(/href="\/p\/([0-9A-Za-z_-]{11})\//);
 
     const shortcode = m && m[1];
     if (!shortcode) throw new Error("kein Post gefunden");
