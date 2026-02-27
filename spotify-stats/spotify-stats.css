@@ -6,20 +6,20 @@
 .track-info span { color: #b3b3b3; }
 
 /* Stile für die Künstler-Kachel-Liste */
-#top-artists-list-container h2 {
+#top-artists-list-container h2, #top-tracks-list-container h2 {
     margin-top: 40px;
     border-bottom: 2px solid var(--accent, #3b82f6);
     padding-bottom: 5px;
     margin-bottom: 20px;
 }
 
-.artist-grid {
+.artist-grid, .track-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 20px;
 }
 
-.artist-card {
+.artist-card, .track-card {
     background-color: #282828;
     border-radius: 8px;
     padding: 15px;
@@ -31,9 +31,15 @@
     flex-direction: column;
 }
 
-.artist-card:hover { background-color: #3b3b3b; }
-.artist-card img { width: 100%; border-radius: 50%; aspect-ratio: 1 / 1; object-fit: cover; margin-bottom: 10px; }
-.artist-card span { font-weight: bold; font-size: 0.9em; display: block; margin-bottom: 10px; }
+.artist-card:hover, .track-card:hover { background-color: #3b3b3b; }
+.artist-card img, .track-card img { width: 100%; border-radius: 50%; aspect-ratio: 1 / 1; object-fit: cover; margin-bottom: 10px; }
+.artist-card span, .track-card span { font-weight: bold; font-size: 0.9em; display: block; margin-bottom: 10px; }
+
+.track-card .artist-name {
+    font-size: 0.8em;
+    color: #b3b3b3;
+    margin-top: auto;
+}
 
 /* Stile für die Popularitätsanzeige */
 .popularity {
