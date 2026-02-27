@@ -3,25 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify-Statistiken</title>
+    <title>Unfancy - Spotify-Stats</title>
+    <!-- Link zur Haupt-CSS-Datei für das globale Design -->
+    <link rel="stylesheet" href="../style.css">
+    <!-- Link zur spezifischen CSS-Datei für diese Seite -->
     <link rel="stylesheet" href="spotify-stats.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="https://cdn.iconscout.com/icon/premium/png-256-thumb/no-attribution-icon-svg-download-png-2396447.png?f=webp" type="image/png">
 </head>
 <body>
-    <div class="container">
+    <!-- Die zentrale Layout-Karte, die von der Hauptseite übernommen wird -->
+    <div class="main-card">
         <h1>Spotify-Statistiken</h1>
-        <div id="spotify-container">
+        
+        <!-- Sektion für den aktuell laufenden Song -->
+        <div id="spotify-container" class="spotify-section">
             <p>Lade Spotify-Daten...</p>
         </div>
-        <div id="top-artists-list-container">
+
+        <!-- Sektion für die Top-Künstler -->
+        <div id="top-artists-list-container" class="spotify-section">
+            <h2>Meine Top Künstler</h2>
+            <!-- Initialer Lade-Text, wird von JS überschrieben -->
             <p>Lade Top-Künstler...</p>
         </div>
-        <div id="top-tracks-list-container">
-            <p>Lade Top-Tracks...</p>
+
+        <!-- Sektion für die Top-Titel -->
+        <div id="top-tracks-list-container" class="spotify-section">
+            <h2>Meine Top Titel</h2>
+            <!-- Initialer Lade-Text, wird von JS überschrieben -->
+            <p>Lade Top-Titel...</p>
         </div>
-        <div id="charts-container" style="display: none; height: 500px; margin-top: 20px;">
-            <canvas id="top-artists-chart"></canvas>
-        </div>
+        
+        <!-- Link zurück zur Startseite, im gleichen Stil wie die anderen Links -->
+        <a class="stats-link" href="/" style="margin-top: 30px;">→ Zurück zur Startseite</a>
     </div>
+
+    <!-- Die Fußzeile, exakt wie auf der Hauptseite -->
+    <footer>
+        <p style="text-align:center;color:var(--accent2,#7dd3fc);margin-top:40px;font-size:1em;">2025 Unfancy - Laurin</p>
+    </footer>
+
+    <!-- JavaScript-Dateien -->
     <script src="spotify-stats.js"></script>
 </body>
 </html>
