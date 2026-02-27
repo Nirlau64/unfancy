@@ -1,19 +1,15 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const WORKER_URL = 'https://spotifystats.tools-309.workers.dev'; 
+    const WORKER_URL = 'https://spotifystats.tools-309.workers.dev';
 
     const spotifyContainer = document.getElementById('spotify-container');
-    const chartsContainer = document.getElementById('charts-container');
-    let topArtistsChartInstance = null; 
-
+    // HINWEIS: Das Element wird von 'charts-container' in 'top-artists-container' umbenannt
+    const topArtistsContainer = document.getElementById('top-artists-container'); 
+    
     async function fetchFromWorker(endpoint) {
         try {
             const response = await fetch(`${WORKER_URL}${endpoint}`);
-            if (!response.ok) {
-                throw new Error(`Worker request failed with status ${response.status}`);
-            }
-            if (response.status === 204) {
-                return null;
-            }
+            if (!response.ok) throw new Error(`Worker request failed: ${response.status}`);
+            if (response.status === 204) return null;
             return response.json();
         } catch (error) {
             console.error('Error fetching from worker:', error);
@@ -40,68 +36,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         spotifyContainer.innerHTML = content;
     }
-    
-    function renderTopArtistsChart(data) {
-        // DEBUG: Gib das gesamte ankommende Datenobjekt aus.
-        console.log("Received data from worker:", data);
 
+    // NEU: Diese Funktion erstellt eine Liste statt einer Grafik
+    function renderTopArtistsList(data) {
         if (!data || !data.items || data.items.length === 0) {
-            chartsContainer.innerHTML = '<p>Konnte keine Top-Künstler laden oder Daten sind leer.</p>';
+            topArtistsContainer.innerHTML = '<p>Konnte keine Top-Künstler laden.</p>';
             return;
         }
 
-        if (topArtistsChartInstance) {
-            topArtistsChartInstance.destroy();
-        }
+        // Erstelle die HTML-Struktur für die Künstlerliste
+        let artistListHTML = '<h2>Top Künstler</h2><div class="artist-grid">';
 
-        const ctx = document.getElementById('top-artists-chart').getContext('2d');
-        
-        const labels = data.items.map(artist => artist.name);
-        const popularityData = data.items.map(artist => artist.popularity);
+        data.items.forEach(artist => {
+            // Wähle das kleinste Bild, das nicht zu winzig ist (z.B. 160px)
+            const imageUrl = artist.images.find(img => img.width >= 160)?.url || artist.images[0]?.url;
 
-        topArtistsChartInstance = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Popularität auf Spotify',
-                    data: popularityData,
-                    backgroundColor: 'rgba(30, 215, 96, 0.6)',
-                    borderColor: 'rgba(30, 215, 96, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                indexAxis: 'y',
-                scales: {
-                    x: {
-                        beginAtZero: true,
-                        max: 100,
-                        ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)'
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
-                    },
-                    y: {
-                        ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)'
-                        },
-                        grid: {
-                            display: false
-                        }
-                    }
-                },
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                }
-            }
+            artistListHTML += `
+                <a href="${artist.external_urls.spotify}" target="_blank" class="artist-card">
+                    <img src="${imageUrl}" alt="${artist.name}">
+                    <span>${artist.name}</span>
+                </a>
+            `;
         });
+
+        artistListHTML += '</div>';
+        topArtistsContainer.innerHTML = artistListHTML;
     }
 
     async function loadSpotifyData() {
@@ -109,7 +68,8 @@ document.addEventListener("DOMContentLoaded", () => {
         renderNowPlaying(nowPlayingData);
 
         const topArtistsData = await fetchFromWorker('/top-artists');
-        renderTopArtistsChart(topArtistsData);
+        // Rufe die neue Funktion auf
+        renderTopArtistsList(topArtistsData);
     }
 
     loadSpotifyData();

@@ -6,10 +6,9 @@
     <title>Spotify Stats</title>
     <link rel="stylesheet" href="../style.css"> <!-- Haupt-Stylesheet -->
     <link rel="stylesheet" href="spotify-stats.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js wird nicht mehr benötigt -->
 </head>
 <body>
-    <!-- Verwende die gleiche 'main-card'-Struktur wie auf der Startseite -->
     <div class="main-card">
         <h1>Spotify Stats</h1>
         
@@ -17,12 +16,9 @@
             <p>Lade Spotify-Daten...</p>
         </div>
 
-        <div id="charts-container">
-            <h2>Top Künstler</h2>
-            <!-- Container für die Chart, um die Höhe zu kontrollieren -->
-            <div class="chart-wrapper">
-                <canvas id="top-artists-chart"></canvas>
-            </div>
+        <!-- Der Container für die Top-Künstler (vorher war es 'charts-container') -->
+        <div id="top-artists-container">
+            <!-- Die Künstlerliste wird hier vom JavaScript eingefügt -->
         </div>
 
         <a href="/" class="stats-link">→ Zurück zur Startseite</a>
