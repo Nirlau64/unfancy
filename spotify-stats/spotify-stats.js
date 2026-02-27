@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const spotifyContainer = document.getElementById('spotify-container');
     const chartsContainer = document.getElementById('charts-container');
-    let topArtistsChartInstance = null; // FIX: Variable für die Chart-Instanz
+    let topArtistsChartInstance = null; 
 
     async function fetchFromWorker(endpoint) {
         try {
@@ -42,12 +42,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     
     function renderTopArtistsChart(data) {
+        // DEBUG: Gib das gesamte ankommende Datenobjekt aus.
+        console.log("Received data from worker:", data);
+
         if (!data || !data.items || data.items.length === 0) {
-            chartsContainer.innerHTML = '<p>Konnte keine Top-Künstler laden.</p>';
+            chartsContainer.innerHTML = '<p>Konnte keine Top-Künstler laden oder Daten sind leer.</p>';
             return;
         }
 
-        // FIX: Zerstöre die alte Chart-Instanz, falls eine existiert
         if (topArtistsChartInstance) {
             topArtistsChartInstance.destroy();
         }
@@ -57,7 +59,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const labels = data.items.map(artist => artist.name);
         const popularityData = data.items.map(artist => artist.popularity);
 
-        // FIX: Weise die neue Chart der Instanz-Variable zu
         topArtistsChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
