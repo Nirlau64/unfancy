@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const spotifyStatusContainer = document.getElementById('spotify-status');
     const steamStatusContainer = document.getElementById('steam-status');
-    const SPOTIFY_WORKER_URL = 'spotify.api.nirlau.de';
+    const SPOTIFY_WORKER_URL = 'https://spotify.api.nirlau.de';
     const STEAM_WORKER_URL = 'https://steam.api.nirlau.de';
     const STEAMID = "76561198159661156"; // Your SteamID
 

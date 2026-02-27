@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const WORKER_URL = 'spotify.api.nirlau.de';
+    const WORKER_URL = 'https://spotify.api.nirlau.de';
 
     const spotifyContainer = document.getElementById('spotify-container');
     const topArtistsListContainer = document.getElementById('top-artists-list-container');
