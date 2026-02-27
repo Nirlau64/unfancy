@@ -1,3 +1,12 @@
+/* Gib der Hauptkarte auf dieser Seite eine bessere Breite
+   Die Regel ist spezifischer (body .main-card), um andere Styles zu überschreiben. */
+body .main-card {
+    width: 90%;
+    max-width: 800px;
+    margin-left: auto;  /* Zentriert die Karte */
+    margin-right: auto;
+}
+
 /* Stile für den "Aktuell läuft"-Bereich */
 .track {
     display: flex;
@@ -11,7 +20,7 @@
 
 .track img {
     border-radius: 4px;
-    width: 64px;  /* Kleinere Bilder */
+    width: 64px;
     height: 64px;
 }
 
@@ -25,25 +34,25 @@
 }
 
 .track-info span {
-    color: #b3b3b3; /* Etwas dunklerer Text für die Künstler */
+    color: #b3b3b3;
 }
 
 /* Container für die Grafik, um die Höhe zu steuern */
 .chart-wrapper {
     position: relative;
-    height: 400px; /* Feste Höhe für die Grafik */
-    width: 100%;    /* FIX: Volle Breite erzwingen */
+    height: 400px;
+    width: 100%;
     margin-top: 15px;
 }
 
 /* Allgemeiner Link-Stil anpassen */
 .stats-link {
-    margin-top: 20px; /* Etwas Abstand nach oben */
+    margin-top: 20px;
     display: inline-block;
 }
 
 h2 {
-    margin-top: 30px; /* Abstand über der "Top Künstler" Überschrift */
+    margin-top: 30px;
     border-bottom: 2px solid var(--accent, #3b82f6);
     padding-bottom: 5px;
 }
