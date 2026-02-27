@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const spotifyContainer = document.getElementById('spotify-container');
     const topArtistsListContainer = document.getElementById('top-artists-list-container');
+    const topTracksListContainer = document.getElementById('top-tracks-list-container'); // Neu
     const chartsContainer = document.getElementById('charts-container');
     let topArtistsChartInstance = null;
 
@@ -111,14 +112,37 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+    
+    function renderTopTracks(data) { // Neu
+        if (!data || !data.items || !data.items.length) {
+            topTracksListContainer.innerHTML = '<p>Top-Titel konnten nicht geladen werden.</p>';
+            return;
+        }
+        const tracks = data.items;
+        let trackListHTML = '<h2>Top Titel</h2><div class="track-grid">';
+        tracks.forEach(track => {
+            const imageUrl = track.album.images.find(img => img.width >= 160)?.url || track.album.images[0]?.url;
+            trackListHTML += `
+                <a href="${track.external_urls.spotify}" target="_blank" class="track-card">
+                    <img src="${imageUrl}" alt="${track.name}">
+                    <span>${track.name}</span>
+                     <span class="artist-name">${track.artists.map(a => a.name).join(', ')}</span>
+                </a>
+            `;
+        });
+        trackListHTML += '</div>';
+        topTracksListContainer.innerHTML = trackListHTML;
+    }
 
     async function loadSpotifyData() {
-        const [nowPlayingData, topArtistsData] = await Promise.all([
+        const [nowPlayingData, topArtistsData, topTracksData] = await Promise.all([
             fetchFromWorker('/now-playing'),
-            fetchFromWorker('/top-artists')
+            fetchFromWorker('/top-artists'),
+            fetchFromWorker('/top-tracks') // Neu
         ]);
         renderNowPlaying(nowPlayingData);
         renderTopArtists(topArtistsData);
+        renderTopTracks(topTracksData); // Neu
     }
 
     // KORREKTUR: Zuerst das Skript laden, DANN initialisieren.

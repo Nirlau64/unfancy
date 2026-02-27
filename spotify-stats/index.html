@@ -3,37 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify Stats</title>
-    <link rel="stylesheet" href="../style.css">
+    <title>Spotify-Statistiken</title>
     <link rel="stylesheet" href="spotify-stats.css">
-    <link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/2048px-Spotify_logo_without_text.svg.png" type="image/png">
 </head>
 <body>
-    <div class="main-card">
-        <h1>Spotify Stats</h1>
-        
+    <div class="container">
+        <h1>Spotify-Statistiken</h1>
         <div id="spotify-container">
             <p>Lade Spotify-Daten...</p>
         </div>
-
-        <!-- NEU: Container für die Künstler-Kacheln -->
         <div id="top-artists-list-container">
-            <!-- Die Künstler-Kacheln werden hier vom JavaScript eingefügt -->
+            <p>Lade Top-Künstler...</p>
         </div>
-
-        <!-- NEU: Container für die Grafik -->
-        <div id="charts-container">
-            <h2 class="chart-title">Popularitäts-Ranking</h2>
+        <div id="top-tracks-list-container">
+            <p>Lade Top-Tracks...</p>
+        </div>
+        <div id="charts-container" style="display: none; height: 500px; margin-top: 20px;">
             <canvas id="top-artists-chart"></canvas>
         </div>
-
-        <a href="/" class="stats-link">→ Zurück zur Startseite</a>
     </div>
-
-    <footer>
-        <p style="text-align:center;color:var(--accent2,#7dd3fc);margin-top:40px;font-size:1em;">2025 Unfancy - Laurin</p>
-    </footer>
-
     <script src="spotify-stats.js"></script>
 </body>
 </html>
