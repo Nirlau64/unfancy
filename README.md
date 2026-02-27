@@ -24,7 +24,7 @@ Neben der Startseite gibt es spezielle Unterseiten für:
   - Präsentiert Spiele in flexiblen, anpassbaren Kartenlayouts.
 
 - **Spotify-Statistiken**
-  - Zeigt aktuell gehörte Songs und Playlists.
+  - Zeigt aktuell gehörte Songs und Künstler.
   - Nutzt die Spotify-API für Echtzeit-Daten.
 
 - **Social-Seite**
