@@ -55,7 +55,6 @@ function imgWithFallback(candidates, alt) {
   return `
     <img src="${first}" alt="${alt}"
          style="width:184px;height:69px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px #000a;background:#111"
-            border-radius:8px;box-shadow:0 2px 8px #000a;background:#111;display:block"
          onerror="
            const el=this;
            const tryNext=()=>{
@@ -121,10 +120,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const gamesFiltered = (owned.games || []).filter(g => !isBlocked(g));
 
   const totalMinutes = gamesFiltered.reduce((s, g) => s + (g.playtime_minutes || 0), 0);
-  const top = gamesFiltered
+  const top16 = gamesFiltered
     .slice() // Kopie
     .sort((a,b) => b.playtime_minutes - a.playtime_minutes)
     .slice(0, 16);
+
+  const top10 = top16.slice(0, 10);
 
 statsDiv.innerHTML = `
   <h2>Gesamtspielzeit: ${minutesToHours(totalMinutes)} Stunden</h2>
@@ -133,7 +134,7 @@ statsDiv.innerHTML = `
               grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
               gap:16px;
               justify-items:center;">
-    ${top.map(game => {
+    ${top16.map(game => {
        const imgs = buildImageCandidates(game.appid, game.img_logo_url);
        return `
          <div style="text-align:center;width:100%;max-width:220px;">
@@ -143,4 +144,40 @@ statsDiv.innerHTML = `
          </div>`;
      }).join("")}
   </div>`;
+
+  const chartCanvas = document.getElementById('top-games-chart');
+  new Chart(chartCanvas, {
+    type: 'bar',
+    data: {
+      labels: top10.map(g => g.name),
+      datasets: [{
+        label: 'Spielstunden',
+        data: top10.map(g => minutesToHours(g.playtime_minutes)),
+        backgroundColor: 'rgba(23, 13, 19, 0.8)',
+        borderColor: 'rgba(125, 211, 252, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+        indexAxis: 'y',
+        scales: {
+            x: {
+                beginAtZero: true,
+                ticks: {
+                    color: 'white'
+                }
+            },
+            y: {
+                ticks: {
+                    color: 'white'
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    }
+  });
 });
