@@ -1,8 +1,9 @@
 // lol-stats.js
 // Fetches and displays League of Legends stats for Nirlau61#EUW from api.nirlau.de
 document.addEventListener('DOMContentLoaded', async function() {
-    const container = document.getElementById('lol-stats-container');
-    container.innerHTML = '<p>Lade Statistiken ...</p>';
+    const profileContainer = document.getElementById('lol-profile');
+    const statsContainer = document.getElementById('lol-stats-container');
+    statsContainer.innerHTML = '<p>Lade Statistiken ...</p>';
 
     // Data Dragon Patch-Version (ggf. aktuell halten)
     async function getLatestDDragonVersion() {
@@ -69,48 +70,51 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (!response.ok) throw new Error('Fehler beim Laden der Daten');
         const data = await response.json();
 
-        let html = '';
-        html += `<h2>Summoner: Nirlau61</h2>`;
-        html += `<p>Level: ${data.level || 'N/A'}</p>`;
+        let profileHtml = '';
+        profileHtml += `<h2>Summoner: Nirlau61</h2>`;
+        profileHtml += `<p>Level: ${data.level || 'N/A'}</p>`;
 
         if (typeof data.totalMasteryPoints === 'number') {
-            html += `<p>Gesamt Mastery: ${data.totalMasteryPoints.toLocaleString('de-DE')}</p>`;
+            profileHtml += `<p>Gesamt Mastery: ${data.totalMasteryPoints.toLocaleString('de-DE')}</p>`;
         }
 
         let created = data.accountCreatedAt || data.accountCreatedAtApprox;
         if (created) {
             const date = new Date(created);
-            html += `<p>Account erstellt am: ${date.toLocaleDateString('de-DE')}</p>`;
+            profileHtml += `<p>Account erstellt am: ${date.toLocaleDateString('de-DE')}</p>`;
         }
+        profileContainer.innerHTML = profileHtml;
 
+
+        let statsHtml = '';
         if (data.masteryTop3 && data.masteryTop3.length) {
-            html += '<h3>Meistgespielte Champions</h3>';
-            html += '<ol style="display:flex;flex-wrap:wrap;justify-content:center;gap:12px;list-style:none;padding:0;">';
+            statsHtml += '<h3>Meistgespielte Champions</h3>';
+            statsHtml += '<ol class="champ-list">';
             data.masteryTop3.forEach(champ => {
                 let cd = champMap[String(champ.championId)] || champMap[champ.championId];
                 if (cd) {
-                    html += `<li style="text-align:center;">
-                        <img src="${cd.imageUrl}" alt="${cd.name}" style="width:64px;height:64px;display:block;margin:0 auto 8px;">
+                    statsHtml += `<li>
+                        <img src="${cd.imageUrl}" alt="${cd.name}">
                         <div>${cd.name}</div>
-                        <div style="font-size:0.9em;color:#666;">${champ.points} Punkte</div>
+                        <div class="champ-points">${champ.points} Punkte</div>
                     </li>`;
                 } else {
-                    html += `<li>Champion-ID ${champ.championId} (${champ.points} Punkte)</li>`;
+                    statsHtml += `<li>Champion-ID ${champ.championId} (${champ.points} Punkte)</li>`;
                 }
             });
-            html += '</ol>';
+            statsHtml += '</ol>';
         }
 
         // Letzte 10 Spiele
         if (data.recentMatches && Array.isArray(data.recentMatches) && data.recentMatches.length) {
-            html += '<h3>Letzte 10 Spiele</h3>';
-            html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.98em;min-width:560px;">';
-            html += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Gamemode</th><th>Ergebnis / Platz</th></tr></thead><tbody>';
+            statsHtml += '<h3>Letzte 10 Spiele</h3>';
+            statsHtml += '<div><table>';
+            statsHtml += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Gamemode</th><th>Ergebnis / Platz</th></tr></thead><tbody>';
             data.recentMatches.slice(0, 10).forEach(match => {
                 if (!match.you) return;
                 const cd   = champMap[String(match.you.championId)] || champMap[match.you.championId];
                 const cName = cd ? cd.name : `ID ${match.you.championId}`;
-                const cImg  = cd ? `<img src="${cd.imageUrl}" alt="${cName}" style="width:32px;height:32px;vertical-align:middle;">` : '';
+                const cImg  = cd ? `<img src="${cd.imageUrl}" alt="${cName}">` : '';
 
                 const kda      = `${match.you.kills}/${match.you.deaths}/${match.you.assists}`;
                 const cs       = match.you.cs !== undefined ? match.you.cs : '-';
@@ -129,7 +133,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     result = match.you.win ? 'Sieg' : 'Niederlage';
                 }
 
-                html += `<tr style="text-align:center;">
+                statsHtml += `<tr>
                     <td>${cImg} ${cName}</td>
                     <td>${kda}</td>
                     <td>${cs}</td>
@@ -138,11 +142,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                     <td>${result}</td>
                 </tr>`;
             });
-            html += '</tbody></table>';
+            statsHtml += '</tbody></table></div>';
         }
 
-        container.innerHTML = html;
+        statsContainer.innerHTML = statsHtml;
     } catch (err) {
-        container.innerHTML = `<p style="color:red;">Fehler beim Laden der Statistiken: ${err.message}</p>`;
+        profileContainer.innerHTML = '';
+        statsContainer.innerHTML = `<p style="color:red;">Fehler beim Laden der Statistiken: ${err.message}</p>`;
     }
 });

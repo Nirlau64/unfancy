@@ -1,6 +1,13 @@
+/* lol-stats.css */
+
+#lol-profile {
+    text-align: center;
+    margin-bottom: 2em;
+}
+
 #lol-stats-container {
-    max-width: 900px;      /* optional */
-    margin: 0;             /* Karte übernimmt Abstände */
+    max-width: 900px;
+    margin: 0;
     background: transparent;
     border-radius: 0;
     box-shadow: none;
@@ -32,6 +39,8 @@ p, li, td, th {
     list-style: none;
     padding: 0;
     margin: 0 0 1.5em 0;
+    justify-content: center;
+    flex-wrap: wrap;
 }
 .champ-list li {
     text-align: center;
@@ -49,29 +58,60 @@ p, li, td, th {
     background: #222;
 }
 
-@media (max-width: 700px) {
-.champ-list {
-    flex-wrap: wrap;
-    justify-content: center;
-}
-    @media (max-width: 600px) {
-    .main-card.lol {
-    max-width: 100%;
-    margin: 40px 12px;
-    padding: 24px 16px;
-    }
-}
-.champ-list li {
-    min-width: 90px;
-    margin-bottom: 12px;
+.champ-points {
+    font-size: 0.9em;
+    color: #aaa;
 }
 
-#lol-stats-container {
-    overflow-x: auto;
-}
 #lol-stats-container table {
     width: 100%;
-    min-width: 480px;
-    display: block;
+    border-collapse: collapse;
+    font-size: 0.98em;
+    min-width: 560px;
 }
+
+#lol-stats-container th, #lol-stats-container td {
+    padding: 8px 12px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+}
+
+#lol-stats-container th {
+    background-color: var(--border);
+}
+
+#lol-stats-container tr:last-child td {
+    border-bottom: none;
+}
+
+#lol-stats-container img {
+    width: 32px;
+    height: 32px;
+    vertical-align: middle;
+}
+
+#lol-stats-container div {
+    overflow-x: auto;
+}
+
+@media (max-width: 700px) {
+    .champ-list {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    @media (max-width: 600px) {
+        .main-card.lol {
+            max-width: 100%;
+            margin: 40px 12px;
+            padding: 24px 16px;
+        }
+    }
+    .champ-list li {
+        min-width: 90px;
+        margin-bottom: 12px;
+    }
+
+    #lol-stats-container table {
+        display: block;
+    }
 }
