@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
     // ---- KONFIGURATION ----
-    const WORKER_URL = 'https://spotifystats.tools-309.workers.dev/'; 
+    const WORKER_URL = 'https://spotifystats.tools-309.workers.dev'; 
     // ---------------------
 
     const spotifyContainer = document.getElementById('spotify-container');
@@ -12,14 +12,13 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!response.ok) {
                 throw new Error(`Worker request failed with status ${response.status}`);
             }
-            // Handle 204 No Content (z.B. kein Song spielt)
             if (response.status === 204) {
                 return null;
             }
             return response.json();
         } catch (error) {
             console.error('Error fetching from worker:', error);
-            return null; // Fehler an die aufrufende Funktion weitergeben
+            return null;
         }
     }
 
@@ -55,25 +54,41 @@ document.addEventListener("DOMContentLoaded", () => {
         const popularityData = data.items.map(artist => artist.popularity);
 
         new Chart(ctx, {
-            type: 'bar', // Balkendiagramm
+            type: 'bar',
             data: {
                 labels: labels,
                 datasets: [{
                     label: 'Popularität auf Spotify',
                     data: popularityData,
-                    backgroundColor: 'rgba(30, 215, 96, 0.6)', // Spotify-Grün
+                    backgroundColor: 'rgba(30, 215, 96, 0.6)',
                     borderColor: 'rgba(30, 215, 96, 1)',
                     borderWidth: 1
                 }]
             },
             options: {
-                indexAxis: 'y', // Horizontale Balken, besser lesbar
+                indexAxis: 'y',
                 scales: {
                     x: {
-                        beginAtZero: true
+                        beginAtZero: true,
+                        max: 100, // FIX: Skala von 0-100 erzwingen
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.7)' // STYLE: Helle Schrift für Achsenbeschriftung
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)' // STYLE: Helle Gitterlinien
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.7)' // STYLE: Helle Schrift für Achsenbeschriftung
+                        },
+                        grid: {
+                            display: false
+                        }
                     }
                 },
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: {
                         display: false
@@ -82,9 +97,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-
-
-    // --- Daten abrufen und Seite rendern ---
 
     async function loadSpotifyData() {
         const nowPlayingData = await fetchFromWorker('/now-playing');
@@ -95,6 +107,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     loadSpotifyData();
-     // Optional: Alle 30 Sekunden aktualisieren
     setInterval(loadSpotifyData, 30000); 
 });

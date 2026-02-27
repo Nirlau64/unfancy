@@ -4,24 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spotify Stats</title>
-    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="../style.css"> <!-- Haupt-Stylesheet -->
     <link rel="stylesheet" href="spotify-stats.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <header>
+    <!-- Verwende die gleiche 'main-card'-Struktur wie auf der Startseite -->
+    <div class="main-card">
         <h1>Spotify Stats</h1>
-        <a href="/" class="back-link">Zurück zur Startseite</a>
-    </header>
-    <main>
+        
         <div id="spotify-container">
             <p>Lade Spotify-Daten...</p>
         </div>
+
         <div id="charts-container">
             <h2>Top Künstler</h2>
-            <canvas id="top-artists-chart"></canvas>
+            <!-- Container für die Chart, um die Höhe zu kontrollieren -->
+            <div class="chart-wrapper">
+                <canvas id="top-artists-chart"></canvas>
+            </div>
         </div>
-    </main>
+
+        <a href="/" class="stats-link">→ Zurück zur Startseite</a>
+
+    </div>
+
+    <footer>
+        <p style="text-align:center;color:var(--accent2,#7dd3fc);margin-top:40px;font-size:1em;">2025 Unfancy - Laurin</p>
+    </footer>
+
     <script src="spotify-stats.js"></script>
 </body>
 </html>

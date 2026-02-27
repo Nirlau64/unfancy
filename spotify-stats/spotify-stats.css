@@ -1,0 +1,46 @@
+/* Stile für den "Aktuell läuft"-Bereich */
+.track {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Abstand zwischen Bild und Text */
+    margin-top: 10px;
+    background-color: rgba(255, 255, 255, 0.05);
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.track img {
+    border-radius: 4px;
+}
+
+.track-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.track-info strong {
+    font-size: 1.1em;
+}
+
+.track-info span {
+    color: #b3b3b3; /* Etwas dunklerer Text für die Künstler */
+}
+
+/* Container für die Grafik, um die Höhe zu steuern */
+.chart-wrapper {
+    position: relative;
+    height: 400px; /* Feste Höhe für die Grafik */
+    margin-top: 15px;
+}
+
+/* Allgemeiner Link-Stil anpassen */
+.stats-link {
+    margin-top: 20px; /* Etwas Abstand nach oben */
+    display: inline-block;
+}
+
+h2 {
+    margin-top: 30px; /* Abstand über der "Top Künstler" Überschrift */
+    border-bottom: 2px solid var(--accent, #3b82f6);
+    padding-bottom: 5px;
+}
