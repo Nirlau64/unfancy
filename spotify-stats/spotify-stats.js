@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const WORKER_URL = 'https://spotifystats.tools-309.workers.dev';
+    const WORKER_URL = 'https://spotify-proxy.tools-309.workers.dev';
 
     const spotifyContainer = document.getElementById('spotify-container');
     // HINWEIS: Das Element wird von 'charts-container' in 'top-artists-container' umbenannt
