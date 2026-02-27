@@ -7,6 +7,7 @@ Das Projekt besteht aus statischen **HTML**, **CSS** und **JavaScript**-Dateien 
 Neben der Startseite gibt es spezielle Unterseiten für:
 - 🎮 **League of Legends Stats** → `lol-stats/`
 - 🕹️ **Steam Stats** → `steam-stats/`
+- 🎵 **Spotify Stats** → `spotify-stats/`
 - 🌐 **Socials (YouTube, Instagram, etc.)** → `socials/`
 
 ---
@@ -21,6 +22,10 @@ Neben der Startseite gibt es spezielle Unterseiten für:
 - **Steam-Statistiken**
   - Liest über eine API persönliche Spieldaten (Playtime, Achievements, etc.) aus.
   - Präsentiert Spiele in flexiblen, anpassbaren Kartenlayouts.
+
+- **Spotify-Statistiken**
+  - Zeigt aktuell gehörte Songs und Playlists.
+  - Nutzt die Spotify-API für Echtzeit-Daten.
 
 - **Social-Seite**
   - Verlinkt auf aktuelle Social-Media-Kanäle.
@@ -44,6 +49,10 @@ unfancy/
 ├── steam-stats/            # Steam-Statistiken
 │   ├── index.html
 │   └── steam-stats.js
+│
+├── spotify-stats/          # Spotify-Statistiken
+│   ├── index.html
+│   └── spotify-stats.js
 │
 └── socials/                # Social-Links
 ├── index.html
