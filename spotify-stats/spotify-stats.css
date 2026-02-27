@@ -27,11 +27,35 @@
     color: white;
     text-decoration: none;
     transition: background-color 0.2s ease;
+    display: flex;
+    flex-direction: column;
 }
 
 .artist-card:hover { background-color: #3b3b3b; }
 .artist-card img { width: 100%; border-radius: 50%; aspect-ratio: 1 / 1; object-fit: cover; margin-bottom: 10px; }
-.artist-card span { font-weight: bold; font-size: 0.9em; display: block; }
+.artist-card span { font-weight: bold; font-size: 0.9em; display: block; margin-bottom: 10px; }
+
+/* Stile für die Popularitätsanzeige */
+.popularity {
+    margin-top: auto; /* Schiebt die Popularitätsanzeige nach unten */
+    font-size: 0.8em;
+    color: #b3b3b3;
+}
+
+.popularity-bar {
+    background-color: #535353;
+    border-radius: 4px;
+    height: 6px;
+    margin-top: 5px;
+    overflow: hidden; /* Stellt sicher, dass der Füllbalken innerhalb der Grenzen bleibt */
+}
+
+.popularity-fill {
+    background-color: #1DB954; /* Spotify-Grün */
+    height: 100%;
+    border-radius: 4px;
+}
+
 
 /* Stile für den Chart-Container */
 #charts-container {

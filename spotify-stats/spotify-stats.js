@@ -47,7 +47,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderTopArtists(data) {
-        // ... (unverändert)
         if (!data || !data.items || !data.items.length) {
             topArtistsListContainer.innerHTML = '<p>Top-Künstler konnten nicht geladen werden.</p>';
             chartsContainer.style.display = 'none';
@@ -66,6 +65,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 <a href="${artist.external_urls.spotify}" target="_blank" class="artist-card">
                     <img src="${imageUrl}" alt="${artist.name}">
                     <span>${artist.name}</span>
+                    ${popularityAvailable ? `
+                        <div class="popularity">
+                            Popularität: ${artist.popularity}
+                            <div class="popularity-bar">
+                                <div class="popularity-fill" style="width: ${artist.popularity}%;"></div>
+                            </div>
+                        </div>
+                    ` : ''}
                 </a>
             `;
         });
