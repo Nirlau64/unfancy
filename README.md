@@ -1,94 +1,67 @@
-# Unfancy — Persönliche Stats-Website
+# 🌟 Unfancy (nirlau.de)
 
-**Unfancy** ist eine kleine, persönliche Web-App zum Sammeln und Anzeigen meiner Spieler-Statistiken.  
-Das Projekt besteht aus statischen **HTML**, **CSS** und **JavaScript**-Dateien und wird über **GitHub Pages** auf  
-[**nirlau.de**](https://nirlau.de) gehostet.  
-
-Neben der Startseite gibt es spezielle Unterseiten für:
-- 🎮 **League of Legends Stats** → `lol-stats/`
-- 🕹️ **Steam Stats** → `steam-stats/`
-- 🎵 **Spotify Stats** → `spotify-stats/`
-- 🌐 **Socials (YouTube, Instagram, etc.)** → `socials/`
+**Unfancy** ist ein minimalistischer, persönlicher Statistik-Hub. Die App dient als zentrales Dashboard für Gaming-Daten, Musik-Aktivitäten und Social-Media-Präsenz – direkt gehostet über GitHub Pages auf [nirlau.de](https://nirlau.de).
 
 ---
 
-## 🧩 Features
+## 🚀 Features
 
-- **League of Legends-Statistiken**
-  - Zeigt Matchhistorie, Sieg/Niederlage und Summoner-Infos.
-  - Nutzt einen eigenen Cloudflare-Worker als Proxy zur Riot-API.
-  - Plant Unterstützung für Arena-Platzierungen und Challenges.
+### 🎮 Gaming Stats
+*   **League of Legends:** Echtzeit-Anzeige von Match-Historien, Sieg/Niederlage-Statistiken und Summoner-Informationen. Die Abfrage erfolgt sicher über einen dedizierten **Cloudflare Worker API-Proxy**.
+*   **Steam Integration:** Dynamische Karten-Layouts für Spielzeiten und zuletzt gespielte Titel.
 
-- **Steam-Statistiken**
-  - Liest über eine API persönliche Spieldaten (Playtime, Achievements, etc.) aus.
-  - Präsentiert Spiele in flexiblen, anpassbaren Kartenlayouts.
+### 🎵 Musik & Lifestyle
+*   **Spotify Real-Time:** Anzeige des aktuell gehörten Songs und der Lieblingskünstler direkt über die Spotify-Web-API.
+*   **Minimalist Socials:** Ein responsives Verzeichnis aller aktuellen Social-Media-Kanäle in einem klaren "Link-in-Bio"-Stil.
 
-- **Spotify-Statistiken**
-  - Zeigt aktuell gehörte Songs und Künstler.
-  - Nutzt die Spotify-API für Echtzeit-Daten.
-
-- **Social-Seite**
-  - Verlinkt auf aktuelle Social-Media-Kanäle.
-  - Minimalistisches, responsives Layout.
+### 🎨 Design & UX
+*   **Dark-First:** Ein konsistentes Dark-Theme für beste Lesbarkeit.
+*   **Responsive:** Vollständig optimiert für mobile Endgeräte und Desktop-Browser.
+*   **Vanilla-Fokus:** Verzicht auf schwere Frameworks für maximale Performance.
 
 ---
 
-## 🛠️ Aufbau des Projekts
+## 🛠 Tech Stack
 
-```
+*   **Frontend:** HTML5, CSS3 (Custom Properties), Vanilla JavaScript (ES6+).
+*   **Backend/Proxy:** Cloudflare Workers (Riot API Bridge).
+*   **Hosting:** GitHub Pages (nirlau.de).
+*   **APIs:** 
+    *   Riot Games API (via Proxy)
+    *   Steam Web API
+    *   Spotify Web API
+
+---
+
+## 📂 Projektstruktur
+
+```text
 unfancy/
-
-├── index.html              # Startseite
-├── style.css               # Haupt-Stylesheet
-├── script.js               # allgemeine Logik & Effekt
-│
-├── lol-stats/              # League-of-Legends-Stats
-│   ├── index.html
-│   └── lol-stats.js
-│
-├── steam-stats/            # Steam-Statistiken
-│   ├── index.html
-│   └── steam-stats.js
-│
-├── spotify-stats/          # Spotify-Statistiken
-│   ├── index.html
-│   └── spotify-stats.js
-│
-└── socials/                # Social-Links
-├── index.html
-└── socials.js
+├── lol-stats/           # League of Legends Logik & Styles
+├── steam-stats/         # Steam API Integration & Layouts
+├── spotify-stats/       # Spotify Real-Time Display
+├── social/              # Social-Media Verzeichnis
+├── assets/              # Bilder, Icons & globale Styles
+├── index.html           # Haupteinstiegspunkt
+└── CNAME                # Domain-Konfiguration (nirlau.de)
 ```
 
 ---
 
-## 🚀 Lokal ausführen
+## 💻 Lokale Entwicklung
 
-Da das Projekt rein statisch ist, reicht es, den Ordner lokal zu öffnen oder über einen simplen lokalen Server zu starten:
+Da das Projekt rein statisch ist, kann es ohne Build-Schritte gestartet werden.
 
-```bash
-# Mit Python:
-python3 -m http.server 8080
-````
+1.  Repository klonen:
+    ```bash
+    git clone https://github.com/Nirlau64/unfancy.git
+    ```
+2.  Lokal hosten (Beispiel mit Python):
+    ```bash
+    python3 -m http.server 8080
+    ```
+3.  Im Browser öffnen: `http://localhost:8080`
 
-Dann im Browser aufrufen:
-👉 [http://localhost:8080](http://localhost:8080)
-
----
-
-## 🌈 Design
-
-* Modernes Dark-Theme mit akzentuierten Farben
-* Klare, zentrierte Layoutstruktur
-* Mobile-Friendly mit flexiblen Kartenkomponenten
+*Hinweis: Einige API-Features erfordern gültige API-Keys oder den konfigurierten Cloudflare-Proxy, um lokal vollständig zu funktionieren.*
 
 ---
-
-## 📄 Lizenz
-
-Kein kommerzielles Projekt.
-© 2025 Laurin — alle Rechte vorbehalten.
-
----
-
-
-
