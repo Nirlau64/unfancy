@@ -56,7 +56,21 @@ p { font-size: 1.1em; line-height: 1.6; }
 
 .text-center { text-align: center; }
 .text-muted { color: var(--text-muted); font-size: 0.9em; }
-.error-msg { color: var(--error); text-align: center; font-weight: 600; padding: 1rem; }
+.error-msg { 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    gap: 15px; 
+    color: var(--text-muted); 
+    padding: 40px 20px; 
+    text-align: center;
+}
+.error-msg svg { width: 50px; height: 50px; opacity: 0.5; }
+.btn-retry {
+    background: transparent; border: 1px solid var(--accent); color: var(--accent);
+    padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.2s;
+}
+.btn-retry:hover { background: var(--accent); color: #fff; }
 
 hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 
@@ -176,6 +190,37 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .track-box a:hover { opacity: 0.8; }
 
 .chart-container { width: 100%; max-width: 500px; margin: 30px auto; position: relative; }
+
+/* --- Steam Achievements --- */
+.achievement-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+}
+.achievement-card {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--border);
+    transition: 0.2s;
+}
+.achievement-card:hover { border-color: var(--accent); background: var(--bg-hover); }
+.achievement-card img { width: 48px; height: 48px; border-radius: 4px; }
+.achievement-info { flex: 1; min-width: 0; }
+.achievement-name { font-weight: 700; font-size: 0.9em; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.achievement-game { font-size: 0.75em; color: var(--accent2); display: block; }
+.achievement-rarity {
+    font-size: 0.75em;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--accent-muted);
+    color: var(--accent2);
+}
 
 /* --- Spotify --- */
 .time-range-buttons { text-align: center; margin-bottom: 20px; }
