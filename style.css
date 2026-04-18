@@ -109,6 +109,29 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
     box-shadow: inset 0 2px 8px #0004;
 }
 
+/* --- Splash Background System --- */
+.section-relative {
+    position: relative;
+    overflow: hidden;
+}
+
+.splash-bg {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+    z-index: 0;
+    background-size: cover;
+    background-position: center 20%;
+    filter: blur(4px) brightness(0.2);
+}
+
+.splash-content {
+    position: relative;
+    z-index: 1;
+}
+
 /* --- Home: Live Status --- */
 .live-status-item {
     display: flex;
@@ -139,7 +162,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
     gap: 16px;
     justify-items: center;
 }
-.steam-game-card { text-align: center; width: 100%; max-width: 220px; text-decoration: none; color: inherit; display: block; transition: transform 0.2s; }
+.steam-game-card { text-align: center; width: 100%; max-width: 220px; text-decoration: none; color: inherit; display: block; transition: transform 0.2s; position: relative; z-index: 2; }
 .steam-game-card:hover { transform: translateY(-4px); }
 .steam-game-card img {
     width: 100%; height: 80px; object-fit: cover; border-radius: 6px;
@@ -175,6 +198,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
     background: var(--bg); border-radius: 12px; padding: 15px;
     display: flex; flex-direction: column; align-items: center;
     text-decoration: none; color: var(--text); transition: 0.2s;
+    position: relative; z-index: 2;
 }
 .media-card:hover { transform: translateY(-4px); background: var(--bg-hover); }
 .media-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; margin-bottom: 12px; }
@@ -194,18 +218,24 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 }
 .champ-list img { width: 60px; height: 60px; border-radius: 8px; margin-bottom: 8px; }
 
-.lol-table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; min-width: 600px; font-size: 0.95em; }
+.lol-table-wrap { overflow-x: auto; position: relative; }
+table { width: 100%; border-collapse: collapse; min-width: 600px; font-size: 0.95em; position: relative; z-index: 2; }
 th, td { padding: 10px 12px; text-align: center; border-bottom: 1px solid var(--border); }
 th { background: var(--border); }
 td img { width: 28px; height: 28px; vertical-align: middle; border-radius: 4px; margin-right: 8px; }
+
+table tr.lol-match-row {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+table tr.lol-match-row:hover { background: var(--bg-hover); }
 
 /* --- Socials --- */
 .social-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; justify-content: center;}
 .social-header svg { border-radius: 6px; }
 .social-header h2 { margin: 0; font-size: 1.2rem; }
 
-.yt-wrap { position: relative; width: 100%; max-width: 700px; margin: 0 auto; padding-top: 39.37%; border-radius: 12px; overflow: hidden; }
+.yt-wrap { position: relative; width: 100%; max-width: 700px; margin: 0 auto; padding-top: 56.25%; border-radius: 12px; overflow: hidden; }
 .yt-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
 .btn-link {
@@ -222,6 +252,4 @@ footer { text-align: center; color: var(--text-muted); padding: 20px; font-size:
 @media (max-width: 600px) {
     .main-card { margin: 20px 10px; padding: 20px 15px; width: calc(100% - 20px); }
     .nav-link { padding: 8px 12px; font-size: 0.9em; }
-}
- .yt-wrap { padding-top: 56.25%; }
 }

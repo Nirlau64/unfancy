@@ -11,13 +11,58 @@ const CONFIG = {
         LOL: "https://api.nirlau.de/lol/Nirlau61/EUW/euw",
         YT_RSS: "https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fwww.youtube.com%2Ffeeds%2Fvideos.xml%3Fchannel_id%3DUCmr2wtpiZuDvwpShCNF9tng"
     },
-    STEAM_BLOCKLIST: new Set([629520, 744190, 431960, 250820, 228980, 480])
+    STEAM_BLOCKLIST: new Set([629520, 744190, 431960, 250820, 228980, 480]),
+    DEFAULT_ACCENT: '#3b82f6'
 };
 
 let steamChartInstance = null;
 const loadedPages = new Set();
 
 // --- 2. CORE HELPERS ---
+async function getDominantColor(imgUrl) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = imgUrl;
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 1; canvas.height = 1;
+                ctx.drawImage(img, 0, 0, 1, 1);
+                const data = ctx.getImageData(0, 0, 1, 1).data;
+                const color = `rgb(${data[0]}, ${data[1]}, ${data[2]})`;
+                console.log("New accent color extracted:", color);
+                resolve(color);
+            } catch (e) {
+                console.warn("Canvas access blocked (CORS). Using default.");
+                resolve(CONFIG.DEFAULT_ACCENT);
+            }
+        };
+        img.onerror = () => resolve(CONFIG.DEFAULT_ACCENT);
+        // Timeout after 2s
+        setTimeout(() => resolve(CONFIG.DEFAULT_ACCENT), 2000);
+    });
+}
+
+function updateAccentColor(color) {
+    if (!color) return;
+    document.documentElement.style.setProperty('--accent', color);
+    
+    // Create a semi-transparent version for shadows or overlays
+    const rgba = color.replace('rgb', 'rgba').replace(')', ', 0.3)');
+    document.documentElement.style.setProperty('--accent-muted', rgba);
+    
+    // Also update mobile browser bar color
+    let themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (!themeMeta) {
+        themeMeta = document.createElement('meta');
+        themeMeta.name = "theme-color";
+        document.head.appendChild(themeMeta);
+    }
+    themeMeta.content = color;
+}
+
 async function fetchAPI(url, useCacheBusting = true) {
     try {
         let finalUrl = url;
@@ -44,6 +89,26 @@ function escapeHTML(str) {
 function minutesToHours(min) { return (min / 60).toFixed(1); }
 
 // --- 3. ROUTER & TRANSITIONS ---
+// Helper for Splash Effects
+function setupSplashHover(container, itemSelector, bgSelector) {
+    const splashBg = container.querySelector(bgSelector);
+    const items = container.querySelectorAll(itemSelector);
+    if (!splashBg || !items.length) return;
+
+    items.forEach(item => {
+        item.addEventListener('mouseenter', () => {
+            const url = item.dataset.splash || item.querySelector('img')?.src;
+            if (url) {
+                splashBg.style.backgroundImage = `url('${url}')`;
+                splashBg.style.opacity = '1';
+            }
+        });
+        item.addEventListener('mouseleave', () => {
+            splashBg.style.opacity = '0';
+        });
+    });
+}
+
 async function loadPage(url, pushState = true) {
     const contentDiv = document.getElementById('app-content');
     if (!contentDiv) return;
@@ -107,6 +172,10 @@ async function updateHomeStatus() {
         const spData = await fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`);
         if (spData && spData.is_playing) {
             const track = spData.item;
+            const coverUrl = track.album.images[0].url;
+            const color = await getDominantColor(coverUrl);
+            updateAccentColor(color);
+
             const trackUrl = track.external_urls?.spotify || '#';
             spEl.innerHTML = `
                 <div class="live-status-item">
@@ -170,20 +239,27 @@ async function initSteam() {
         const sorted = validGames.sort((a,b) => b.playtime_minutes - a.playtime_minutes);
         const top16 = sorted.slice(0, 16);
         
+        statsDiv.classList.add('section-relative');
         statsDiv.innerHTML = `
-            <h2 class="text-center">Gesamtspielzeit: ${minutesToHours(totalMins)} Stunden</h2>
-            <h3 class="text-center">Meistgespielte Spiele</h3>
-            <div class="steam-grid">
-                ${top16.map(g => `
-                    <a href="https://store.steampowered.com/app/${g.appid}" target="_blank" class="steam-game-card">
-                        <img src="https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/capsule_231x87.jpg" 
-                             onerror="this.src='https://media.steampowered.com/steamcommunity/public/images/apps/${g.appid}/${g.img_logo_url}.jpg'" 
-                             alt="${escapeHTML(g.name)}">
-                        <div class="steam-game-title">${escapeHTML(g.name)}</div>
-                        <div class="text-muted">${minutesToHours(g.playtime_minutes)} Std.</div>
-                    </a>
-                `).join('')}
+            <div class="splash-bg"></div>
+            <div class="splash-content">
+                <h2 class="text-center">Gesamtspielzeit: ${minutesToHours(totalMins)} Stunden</h2>
+                <h3 class="text-center">Meistgespielte Spiele</h3>
+                <div class="steam-grid">
+                    ${top16.map(g => `
+                        <a href="https://store.steampowered.com/app/${g.appid}" target="_blank" class="steam-game-card" 
+                           data-splash="https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_hero.jpg">
+                            <img src="https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/capsule_231x87.jpg" 
+                                 onerror="this.src='https://media.steampowered.com/steamcommunity/public/images/apps/${g.appid}/${g.img_logo_url}.jpg'" 
+                                 alt="${escapeHTML(g.name)}">
+                            <div class="steam-game-title">${escapeHTML(g.name)}</div>
+                            <div class="text-muted">${minutesToHours(g.playtime_minutes)} Std.</div>
+                        </a>
+                    `).join('')}
+                </div>
             </div>`;
+
+        setupSplashHover(statsDiv, '.steam-game-card', '.splash-bg');
 
         if (steamChartInstance) steamChartInstance.destroy();
         const top10 = sorted.slice(0, 10);
@@ -221,36 +297,58 @@ async function initSpotify() {
 async function loadSpotifyData(range) {
     const artistsDiv = document.getElementById('spotify-artists');
     const tracksDiv = document.getElementById('spotify-tracks');
+    const nowPlayingDiv = document.getElementById('spotify-now-playing');
     if (!artistsDiv || !tracksDiv) return;
 
     artistsDiv.innerHTML = `<h2>Meine Top Künstler</h2><div class="text-center text-muted">Lade...</div>`;
     tracksDiv.innerHTML = `<h2>Meine Top Titel</h2><div class="text-center text-muted">Lade...</div>`;
 
     try {
-        const [artists, tracks] = await Promise.all([
+        const [artists, tracks, nowPlaying] = await Promise.all([
             fetchAPI(`${CONFIG.API.SPOTIFY}/top-artists?range=${range}`),
-            fetchAPI(`${CONFIG.API.SPOTIFY}/top-tracks?range=${range}`)
+            fetchAPI(`${CONFIG.API.SPOTIFY}/top-tracks?range=${range}`),
+            fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`).catch(() => null)
         ]);
 
-        let aHtml = `<h2>Meine Top Künstler</h2><div class="media-grid">`;
+        // Hide redundant now playing section in Spotify tab if it's already handled by the accent color/background
+        if (nowPlayingDiv) {
+            nowPlayingDiv.style.display = 'none';
+        }
+
+        // Update accent if something is playing
+        if (nowPlaying && nowPlaying.is_playing) {
+            const color = await getDominantColor(nowPlaying.item.album.images[0].url);
+            updateAccentColor(color);
+        }
+
+        // Artists
+        artistsDiv.classList.add('section-relative');
+        let aHtml = `<div class="splash-bg"></div><div class="splash-content"><h2>Meine Top Künstler</h2><div class="media-grid">`;
         (artists?.items || []).forEach(a => {
-            aHtml += `<a href="${a.external_urls.spotify}" target="_blank" class="media-card artist">
-                <img src="${escapeHTML(a.images[0]?.url || '')}" alt="${escapeHTML(a.name)}">
+            const img = a.images[0]?.url || '';
+            aHtml += `<a href="${a.external_urls.spotify}" target="_blank" class="media-card artist" data-splash="${img}">
+                <img src="${escapeHTML(img)}" alt="${escapeHTML(a.name)}">
                 <span>${escapeHTML(a.name)}</span>
             </a>`;
         });
-        artistsDiv.innerHTML = aHtml + `</div>`;
+        artistsDiv.innerHTML = aHtml + `</div></div>`;
+        setupSplashHover(artistsDiv, '.media-card', '.splash-bg');
 
-        let tHtml = `<h2>Meine Top Titel</h2><div class="media-grid">`;
+        // Tracks
+        tracksDiv.classList.add('section-relative');
+        let tHtml = `<div class="splash-bg"></div><div class="splash-content"><h2>Meine Top Titel</h2><div class="media-grid">`;
         (tracks?.items || []).forEach(t => {
-            tHtml += `<a href="${t.external_urls.spotify}" target="_blank" class="media-card track">
-                <img src="${escapeHTML(t.album.images[0]?.url || '')}" alt="${escapeHTML(t.name)}">
+            const img = t.album.images[0]?.url || '';
+            tHtml += `<a href="${t.external_urls.spotify}" target="_blank" class="media-card track" data-splash="${img}">
+                <img src="${escapeHTML(img)}" alt="${escapeHTML(t.name)}">
                 <span>${escapeHTML(t.name)}</span>
                 <span class="artist-name">${escapeHTML(t.artists.map(ar => ar.name).join(', '))}</span>
             </a>`;
         });
-        tracksDiv.innerHTML = tHtml + `</div>`;
+        tracksDiv.innerHTML = tHtml + `</div></div>`;
+        setupSplashHover(tracksDiv, '.media-card', '.splash-bg');
     } catch(e) {
+        console.error("Spotify Data Error:", e);
         artistsDiv.innerHTML = `<div class="error-msg">Fehler beim Laden.</div>`;
     }
 }
@@ -283,24 +381,29 @@ async function initLoL() {
 
         profileContainer.innerHTML = `<h2>Summoner: Nirlau61</h2><p>Level: ${data.level || 'N/A'}</p>` + (data.totalMasteryPoints ? `<p>Gesamt Mastery: ${data.totalMasteryPoints.toLocaleString('de-DE')}</p>` : '');
 
-        let sHTML = '';
+        // Wrap everything in a single section-relative container for the full background effect
+        let fullHTML = `<div class="section-relative"><div class="splash-bg"></div><div class="splash-content">`;
+
         if (data.masteryTop3?.length) {
-            sHTML += '<h3 class="text-center">Top Champions</h3><ul class="champ-list">';
+            fullHTML += '<h3 class="text-center">Top Champions</h3><ul class="champ-list">';
             data.masteryTop3.forEach(c => {
                 const cd = champMap[c.championId];
-                if (cd) sHTML += `<li><img src="${cd.img}" alt="${cd.name}"><div>${cd.name}</div><div class="text-muted" style="font-size:0.85em;">${c.points} Pkt</div></li>`;
+                const splashUrl = cd ? `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${cd.img.split('/').pop().replace('.png', '')}_0.jpg` : '';
+                if (cd) fullHTML += `<li class="lol-match-row" data-splash="${splashUrl}"><img src="${cd.img}" alt="${cd.name}"><div>${cd.name}</div><div class="text-muted" style="font-size:0.85em;">${c.points} Pkt</div></li>`;
             });
-            sHTML += '</ul>';
+            fullHTML += '</ul>';
         }
 
         if (data.recentMatches?.length) {
-            sHTML += '<h3 class="text-center">Letzte 10 Spiele</h3><div class="lol-table-wrap"><table>';
-            sHTML += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Modus</th><th>Ergebnis</th></tr></thead><tbody>';
+            fullHTML += '<h3 class="text-center">Letzte 10 Spiele</h3><div class="lol-table-wrap"><table>';
+            fullHTML += '<thead><tr><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dauer</th><th>Modus</th><th>Ergebnis</th></tr></thead><tbody>';
             data.recentMatches.slice(0, 10).forEach(m => {
                 if (!m.you) return;
                 const cd = champMap[m.you.championId];
                 const res = (m.isArena && m.you.arenaPlacement) ? `${m.you.arenaPlacement}. Platz` : (m.you.win ? 'Sieg' : 'Niederlage');
-                sHTML += `<tr>
+                const splashUrl = cd ? `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${cd.img.split('/').pop().replace('.png', '')}_0.jpg` : '';
+                
+                fullHTML += `<tr class="lol-match-row" data-splash="${splashUrl}">
                     <td>${cd ? `<img src="${cd.img}" alt="${cd.name}">` : ''} ${escapeHTML(cd ? cd.name : m.you.championId)}</td>
                     <td>${m.you.kills}/${m.you.deaths}/${m.you.assists}</td>
                     <td>${m.you.cs ?? '-'}</td>
@@ -309,10 +412,17 @@ async function initLoL() {
                     <td style="color: ${res==='Sieg'?'#4ade80':(res==='Niederlage'?'#f43f5e':'inherit')}">${res}</td>
                 </tr>`;
             });
-            sHTML += '</tbody></table></div>';
+            fullHTML += '</tbody></table></div>';
         }
-        statsContainer.innerHTML = sHTML;
-    } catch(e) { statsContainer.innerHTML = '<div class="error-msg">Fehler beim Laden der LoL-Stats.</div>'; }
+        fullHTML += '</div></div>';
+        statsContainer.innerHTML = fullHTML;
+
+        // Use the unified splash helper on the entire container
+        setupSplashHover(statsContainer, '.lol-match-row', '.splash-bg');
+    } catch(e) { 
+        console.error(e);
+        statsContainer.innerHTML = '<div class="error-msg">Fehler beim Laden der LoL-Stats.</div>'; 
+    }
 }
 
 // SOCIALS
