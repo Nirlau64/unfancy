@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unfancy - Steam</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -12,7 +14,7 @@
 <body>
     <div class="main-card">
         <header>
-            <h1><span style="color:var(--accent);">Unfancy</span> Dashboard</h1>
+            <h1><span class="text-accent">Unfancy</span> Dashboard</h1>
             <p class="text-muted">Willkommen im zentralen Hub</p>
         </header>
 
@@ -27,7 +29,7 @@
         <main id="app-content">
             <div id="steam" class="tab-content active">
                 <div class="section" id="steam-profile">
-                    <p class="text-center text-muted">Lade Steam Profil...</p>
+                    <p class="text-center text-muted" aria-live="polite">Lade Steam Profil...</p>
                 </div>
                 <div class="section" id="steam-stats">
                     <!-- Dynamischer Content -->
@@ -39,6 +41,6 @@
         </main>
     </div>
     <footer><p>2026 Unfancy - Laurin</p></footer>
-    <script src="script.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
