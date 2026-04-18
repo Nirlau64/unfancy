@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unfancy - Socials</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="main-card">
+        <header>
+            <h1><span style="color:var(--accent);">Unfancy</span> Dashboard</h1>
+            <p class="text-muted">Willkommen im zentralen Hub</p>
+        </header>
+
+        <nav class="nav-tabs" id="nav-tabs">
+            <a href="index.html" class="nav-link" data-page="home">Home</a>
+            <a href="steam.html" class="nav-link" data-page="steam">Steam</a>
+            <a href="spotify.html" class="nav-link" data-page="spotify">Spotify</a>
+            <a href="lol.html" class="nav-link" data-page="lol">League of Legends</a>
+            <a href="socials.html" class="nav-link active" data-page="socials">Socials</a>
+        </nav>
+
+        <main id="app-content">
+            <div id="socials" class="tab-content active">
+                <div class="section text-center">
+                    <div class="social-header">
+                        <svg width="28" height="28" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#FF0000"/><polygon points="10,8 16,12 10,16" fill="#fff"/></svg>
+                        <h2>Neuestes YouTube-Video</h2>
+                        <a class="btn-link btn-yt" href="https://www.youtube.com/@Nirlau61" target="_blank">Profil öffnen</a>
+                    </div>
+                    <div id="socials-yt">Lade Video...</div>
+                </div>
+
+                <div class="section text-center">
+                    <div class="social-header">
+                        <svg width="28" height="28" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#E1306C"/><circle cx="12" cy="12" r="5" fill="#fff"/><circle cx="18" cy="6" r="1.5" fill="#fff"/></svg>
+                        <h2>Instagram</h2>
+                        <a class="btn-link btn-ig" href="https://www.instagram.com/nirlau61/" target="_blank">Profil öffnen</a>
+                    </div>
+                    <div id="socials-ig" style="display:flex; justify-content:center;">
+                        <blockquote class="instagram-media" data-instgrm-permalink="https://www.instagram.com/p/DQwj4iaCAUE/?utm_source=ig_embed" data-instgrm-version="14" style="background:#FFF; border:0; border-radius:3px; box-shadow:0 0 1px 0 rgba(0,0,0,0.5),0 1px 10px 0 rgba(0,0,0,0.15); margin: 1px; max-width:540px; min-width:326px; padding:0; width:99.375%;">
+                            <div style="padding:16px;">
+                                <a href="https://www.instagram.com/p/DQwj4iaCAUE/?utm_source=ig_embed" style="background:#FFFFFF; line-height:0; padding:0 0; text-align:center; text-decoration:none; width:100%;" target="_blank">
+                                    <div style="display: flex; flex-direction: row; align-items: center;">
+                                        <div style="background-color: #F4F4F4; border-radius: 50%; height: 40px; margin-right: 14px; width: 40px;"></div>
+                                        <div style="display: flex; flex-direction: column; justify-content: center;">
+                                            <div style="background-color: #F4F4F4; border-radius: 4px; height: 14px; margin-bottom: 6px; width: 100px;"></div>
+                                            <div style="background-color: #F4F4F4; border-radius: 4px; height: 14px; width: 60px;"></div>
+                                        </div>
+                                    </div>
+                                    <div style="padding: 19% 0;"></div>
+                                    <div style="color:#3897f0; font-family:Arial,sans-serif; font-size:14px; font-weight:550;">View this post on Instagram</div>
+                                    <div style="padding: 12.5% 0;"></div>
+                                </a>
+                            </div>
+                        </blockquote>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <footer><p>2026 Unfancy - Laurin</p></footer>
+    <script src="script.js"></script>
+</body>
+</html>

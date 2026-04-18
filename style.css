@@ -1,155 +1,227 @@
-/* --- Global Dark Mode & Modern Style --- */
+/* --- Global & Variables --- */
 :root {
     --bg: #181a20;
     --bg-card: #23262f;
+    --bg-hover: #2a2d37;
     --text: #f1f1f1;
+    --text-muted: #aaa;
     --accent: #3b82f6;
     --accent2: #7dd3fc;
     --border: #2d313d;
     --shadow: 0 4px 24px 0 #000a;
+    --error: #f43f5e;
 }
-html, body {
+
+* { box-sizing: border-box; }
+
+body {
     background: var(--bg);
     color: var(--text);
     font-family: 'Montserrat', Arial, sans-serif;
     margin: 0;
     padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     min-height: 100vh;
 }
-/* Neu: horizontales Centering global */
-body{
-  display:flex;
-  flex-direction:column;
-  align-items:center;      /* horizontal zentriert */
-  justify-content:flex-start; /* nicht vertikal zentrieren */
-  min-height:100vh;
-}
 
+/* --- Layout --- */
 .main-card {
-    max-width: 70%;
-    /* kein auto mehr nötig, Flex übernimmt das Centering */
-    margin: 80px 0 0 0;
+    width: 100%;
+    max-width: 1040px;
+    margin: 40px 20px;
     background: var(--bg-card);
     border-radius: 18px;
     box-shadow: var(--shadow);
     padding: 38px 30px 32px 30px;
-    text-align: center;
 }
 
-/* New generic section style */
-.section {
-    background: var(--bg-card, #23262f);
-    border-radius: 14px;
-    padding: 16px;
-    margin: 20px 0;
-    box-shadow: 0 2px 8px #0004;
+header {
+    text-align: center;
+    margin-bottom: 30px;
 }
 
 h1 {
     color: var(--accent);
     font-size: 2.2em;
-    margin-bottom: 0.5em;
+    margin-bottom: 0.2em;
     font-weight: 700;
 }
-p {
-    font-size: 1.13em;
-    line-height: 1.7;
+
+h2 { color: var(--text); font-size: 1.6em; margin-bottom: 1rem; text-align: center; }
+h3 { color: var(--accent); font-size: 1.3em; margin-bottom: 0.7em; }
+
+p { font-size: 1.1em; line-height: 1.6; }
+
+.text-center { text-align: center; }
+.text-muted { color: var(--text-muted); font-size: 0.9em; }
+.error-msg { color: var(--error); text-align: center; font-weight: 600; padding: 1rem; }
+
+hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+
+/* --- Navigation / Tabs --- */
+.nav-tabs {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 30px;
 }
-a.stats-link {
-    display: inline-block;
-    margin-top: 18px;
-    background: var(--accent);
-    color: #fff;
-    padding: 12px 28px;
-    border-radius: 10px;
-    font-weight: 700;
-    font-size: 1.08em;
+
+.nav-link {
+    background: transparent;
+    color: var(--text);
+    border: 2px solid var(--border);
+    padding: 10px 20px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    transition: all 0.2s;
     text-decoration: none;
-    box-shadow: 0 2px 8px #0004;
-    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
-}
-a.stats-link:hover {
-    background: var(--accent2);
-    color: #222;
-    box-shadow: 0 4px 16px #0006;
-}
-footer p {
-    color: var(--accent2);
-    font-size: 1em;
-    margin-top: 40px;
+    display: inline-block;
 }
 
-#live-status {
+.nav-link:hover { background: var(--border); }
+.nav-link.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* --- Fluid Transitions --- */
+#app-content {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+#app-content.fade-out {
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+/* --- Generic Section --- */
+.section {
+    background: var(--bg);
+    border-radius: 14px;
+    padding: 20px;
     margin-bottom: 20px;
-    padding: 15px;
-    background: #1c1e24;
-    border-radius: 12px;
+    box-shadow: inset 0 2px 8px #0004;
 }
 
-#spotify-status:not(:empty) {
-    margin-bottom: 15px;
-}
-
+/* --- Home: Live Status --- */
 .live-status-item {
     display: flex;
     align-items: center;
-    gap: 15px;
-}
-
-.live-status-item p {
-    margin: 0;
-    font-size: 1em;
-    color: var(--accent2);
-}
-
-.live-status-item .track,
-.live-status-item .game {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.live-status-item .track img {
-    width: 50px;
-    height: 50px;
-    border-radius: 6px;
-}
-
-.live-status-item .track-info {
-    display: flex;
+    justify-content: center;
     flex-direction: column;
+    gap: 10px;
+    padding: 15px;
+    background: var(--bg);
+    border-radius: 12px;
+    margin-bottom: 15px;
 }
 
-.live-status-item .track-info strong {
-    font-size: 1em;
-    font-weight: 700;
+.live-status-item p { margin: 0; font-size: 1em; color: var(--accent2); font-weight: 600;}
+.track-box { display: flex; align-items: center; gap: 15px; text-align: left; background: var(--bg-card); padding: 10px 15px; border-radius: 8px; }
+.track-box img { width: 50px; height: 50px; border-radius: 6px; }
+.track-info strong { display: block; font-size: 1em; color: var(--text); }
+.track-info span { font-size: 0.9em; color: var(--accent2); }
+
+/* --- Steam --- */
+.profile-header { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 20px; }
+.profile-header img { width: 64px; height: 64px; border-radius: 8px; }
+.profile-header a { color: var(--accent2); text-decoration: none; }
+
+.steam-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    justify-items: center;
+}
+.steam-game-card { text-align: center; width: 100%; max-width: 220px; text-decoration: none; color: inherit; display: block; transition: transform 0.2s; }
+.steam-game-card:hover { transform: translateY(-4px); }
+.steam-game-card img {
+    width: 100%; height: 80px; object-fit: cover; border-radius: 6px;
+    box-shadow: 0 2px 8px #000a; background: #111;
+}
+.steam-game-title { margin-top: 8px; font-weight: bold; font-size: 0.95em; }
+
+.live-steam-link { color: #fff; text-decoration: none; font-weight: 700; font-size: 1.1em; transition: color 0.2s; }
+.live-steam-link:hover { color: var(--accent2); }
+.track-box a { color: inherit; text-decoration: none; transition: opacity 0.2s; }
+.track-box a:hover { opacity: 0.8; }
+
+.chart-container { width: 100%; max-width: 500px; margin: 30px auto; position: relative; }
+
+/* --- Spotify --- */
+.time-range-buttons { text-align: center; margin-bottom: 20px; }
+.time-range-buttons button {
+    background: transparent; color: var(--accent2); border: 1px solid var(--accent2);
+    padding: 8px 16px; margin: 0 4px; border-radius: 20px; cursor: pointer;
+    font-weight: 600; transition: 0.2s;
+}
+.time-range-buttons button:hover, .time-range-buttons button.active {
+    background: var(--accent2); color: var(--bg);
 }
 
-.live-status-item .track-info span {
-    font-size: 0.9em;
-    opacity: 0.8;
+.media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 15px;
+    text-align: center;
 }
-
-.live-status-item .game strong {
-    font-size: 1.1em;
-    font-weight: 700;
+.media-card {
+    background: var(--bg); border-radius: 12px; padding: 15px;
+    display: flex; flex-direction: column; align-items: center;
+    text-decoration: none; color: var(--text); transition: 0.2s;
 }
+.media-card:hover { transform: translateY(-4px); background: var(--bg-hover); }
+.media-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; margin-bottom: 12px; }
+.media-card.artist img { border-radius: 50%; }
+.media-card.track img { border-radius: 8px; }
+.media-card span { font-weight: 600; font-size: 0.85em; line-height: 1.3; }
+.media-card .artist-name { font-size: 0.75em; font-weight: 400; color: var(--accent2); margin-top: 4px; }
 
-/* Ab 600 px Breite beginnen die mobilen Anpassungen */
+/* --- LoL --- */
+.champ-list {
+    display: flex; gap: 20px; list-style: none; padding: 0; margin: 0 0 20px 0;
+    justify-content: center; flex-wrap: wrap;
+}
+.champ-list li {
+    text-align: center; background: var(--bg); border-radius: 12px;
+    padding: 12px; min-width: 100px; box-shadow: inset 0 2px 4px #0002;
+}
+.champ-list img { width: 60px; height: 60px; border-radius: 8px; margin-bottom: 8px; }
+
+.lol-table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 600px; font-size: 0.95em; }
+th, td { padding: 10px 12px; text-align: center; border-bottom: 1px solid var(--border); }
+th { background: var(--border); }
+td img { width: 28px; height: 28px; vertical-align: middle; border-radius: 4px; margin-right: 8px; }
+
+/* --- Socials --- */
+.social-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; justify-content: center;}
+.social-header svg { border-radius: 6px; }
+.social-header h2 { margin: 0; font-size: 1.2rem; }
+
+.yt-wrap { position: relative; width: 100%; max-width: 700px; margin: 0 auto; padding-top: 39.37%; border-radius: 12px; overflow: hidden; }
+.yt-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+.btn-link {
+    display: inline-block; padding: 6px 14px; border-radius: 6px;
+    color: #fff !important; font-weight: 600; text-decoration: none; transition: 0.2s;
+    font-size: 0.9em; margin-left: 10px;
+}
+.btn-yt { background: #ff0000; } .btn-yt:hover { background: #cc0000; }
+.btn-ig { background: #E1306C; } .btn-ig:hover { background: #c72a5f; }
+
+footer { text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.9em; }
+
+/* --- Responsive --- */
 @media (max-width: 600px) {
-  .main-card {
-    max-width: 90%;
-    margin-top: 40px;
-    padding: 24px 16px;
-  }
-  .section {
-    padding: 12px;
-    margin: 12px 0;
-  }
-  h1 { font-size: 1.8em; }
-  p { font-size: 1em; }
-  a.stats-link {
-    padding: 10px 20px;
-    font-size: 1em;
-  }
+    .main-card { margin: 20px 10px; padding: 20px 15px; width: calc(100% - 20px); }
+    .nav-link { padding: 8px 12px; font-size: 0.9em; }
+}
+ .yt-wrap { padding-top: 56.25%; }
 }

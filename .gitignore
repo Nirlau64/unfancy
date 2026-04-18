@@ -1,1 +1,54 @@
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.project
+.settings/
+.classpath
+.factorypath
+
+# Node / NPM (Future-proofing)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn/
+
+# Environment and Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# Build and Temp
+dist/
+build/
+.cache/
+.temp/
+.tmp/
+
+# Local Project Docs & Logs
+GEMINI.md
+*_log.md
+
+# Project IDX
+# Note: Keeping dev.nix is recommended, but ignoring local state
+# (Adjusted based on your current preference)
 /.idx
