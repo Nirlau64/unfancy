@@ -2,6 +2,8 @@
  * Unfancy Dashboard - Router
  */
 
+import { renderError } from './utils.js';
+
 const pageCache = new Map();
 
 /**
@@ -25,6 +27,7 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
             pageName = cached.name;
         } else {
             const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const htmlText = await response.text();
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlText, 'text/html');
@@ -51,8 +54,6 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
 
         // Update Nav Links
         document.querySelectorAll('.nav-link').forEach(link => {
-            const linkPath = link.getAttribute('href');
-            // Normalize paths for comparison if needed
             link.classList.toggle('active', link.dataset.page === pageName);
         });
 
@@ -73,8 +74,8 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
 
     } catch (e) {
         console.error("Routing Error:", e);
-        // Fallback to normal navigation on error
-        window.location.href = url;
+        contentDiv.classList.remove('fade-out');
+        renderError(contentDiv, `Seite konnte nicht geladen werden: ${e.message}`, () => loadPage(url, pushState, triggerLogicFn));
     }
 }
 

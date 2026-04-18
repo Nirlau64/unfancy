@@ -20,7 +20,7 @@ export async function initLoL() {
         queues.forEach(q => queueMap[q.queueId] = q.description || `Queue ${q.queueId}`);
 
         const [champRes, data] = await Promise.all([
-            fetch(`https://ddragon.leagueoflegends.com/cdn/${patch}/data/en_US/championFull.json`).then(r => r.json()),
+            fetch(`https://ddragon.leagueoflegends.com/cdn/${patch}/data/en_US/champion.json`).then(r => r.json()),
             fetchAPI(CONFIG.API.LOL)
         ]);
 

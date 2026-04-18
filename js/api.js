@@ -5,7 +5,7 @@
 /**
  * Fetches data from an API with optional cache busting.
  */
-export async function fetchAPI(url, useCacheBusting = true) {
+export async function fetchAPI(url, useCacheBusting = false) {
     try {
         let finalUrl = url;
         if (useCacheBusting) {

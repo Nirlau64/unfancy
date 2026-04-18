@@ -31,7 +31,7 @@ async function loadSpotifyData(range) {
         const [artists, tracks, nowPlaying] = await Promise.all([
             fetchAPI(`${CONFIG.API.SPOTIFY}/top-artists?range=${range}`),
             fetchAPI(`${CONFIG.API.SPOTIFY}/top-tracks?range=${range}`),
-            fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`).catch(() => null)
+            fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`, true).catch(() => null)
         ]);
 
         if (nowPlayingDiv) nowPlayingDiv.style.display = 'none';

@@ -59,11 +59,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Live Status Auto-Refresh (Home only)
-    setInterval(() => {
-        if (document.getElementById('home')) {
-            updateHomeStatus();
+    let refreshInterval = null;
+    const startPolling = () => {
+        if (!refreshInterval) {
+            refreshInterval = setInterval(() => {
+                if (document.getElementById('home')) {
+                    updateHomeStatus();
+                }
+            }, 30000);
         }
-    }, 30000);
+    };
+    const stopPolling = () => {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+    };
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopPolling();
+        else startPolling();
+    });
+
+    startPolling();
 });
 
 // Helper wrapper for router

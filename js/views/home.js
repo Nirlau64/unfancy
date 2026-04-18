@@ -22,7 +22,7 @@ export async function updateHomeStatus() {
 
     // Spotify Status
     try {
-        const spData = await fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`);
+        const spData = await fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`, true);
         if (spData?.is_playing) {
             const track = spData.item;
             const color = await getDominantColor(track.album.images[0].url);
@@ -72,7 +72,7 @@ export async function updateHomeStatus() {
 
     // Steam Status
     try {
-        const stData = await fetchAPI(`${CONFIG.API.STEAM}/currently-playing?steamid=${CONFIG.STEAM_ID}`);
+        const stData = await fetchAPI(`${CONFIG.API.STEAM}/currently-playing?steamid=${CONFIG.STEAM_ID}`, true);
         if (stData?.game) {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'live-status-item';
