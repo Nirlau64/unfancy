@@ -140,6 +140,8 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
     background-size: cover;
     background-position: center 20%;
     filter: blur(4px) brightness(0.2);
+    will-change: opacity;
+    transform: translateZ(0);
 }
 
 .splash-content {

@@ -5,6 +5,7 @@
 import { renderError } from './utils.js';
 
 const pageCache = new Map();
+let currentAbortController = null;
 
 /**
  * Loads a page by URL, handles caching, transitions and A11y focus.
@@ -12,6 +13,13 @@ const pageCache = new Map();
 export async function loadPage(url, pushState = true, triggerLogicFn) {
     const contentDiv = document.getElementById('app-content');
     if (!contentDiv) return;
+
+    // Abort previous requests
+    if (currentAbortController) {
+        currentAbortController.abort();
+    }
+    currentAbortController = new AbortController();
+    const { signal } = currentAbortController;
 
     // Start transition
     contentDiv.classList.add('fade-out');
@@ -26,7 +34,7 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
             newContentHTML = cached.html;
             pageName = cached.name;
         } else {
-            const response = await fetch(url);
+            const response = await fetch(url, { signal });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const htmlText = await response.text();
             const parser = new DOMParser();
@@ -45,6 +53,9 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
         // Wait for fade-out animation
         await new Promise(r => setTimeout(r, 300));
 
+        // Final check before DOM update
+        if (signal.aborted) return;
+
         // Update DOM
         contentDiv.innerHTML = newContentHTML;
         
@@ -59,7 +70,8 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
 
         // Trigger Page Specific Logic
         if (triggerLogicFn) {
-            triggerLogicFn(pageName);
+            // Pass the signal to the view logic to handle internal fetches
+            triggerLogicFn(pageName, signal);
         }
 
         // Finish transition
@@ -73,6 +85,7 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
         }
 
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Routing Error:", e);
         contentDiv.classList.remove('fade-out');
         renderError(contentDiv, `Seite konnte nicht geladen werden: ${e.message}`, () => loadPage(url, pushState, triggerLogicFn));

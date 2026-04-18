@@ -4,30 +4,39 @@
 
 import { loadPage, setupPopstate, setupSwipeNavigation } from './router.js';
 import { initHome, updateHomeStatus } from './views/home.js';
-import { initSteam } from './views/steam.js';
+import { initSteam, cleanupSteam } from './views/steam.js';
 import { initSpotify } from './views/spotify.js';
 import { initLoL } from './views/lol.js';
 import { initSocials } from './views/socials.js';
 
+let currentPageCleanup = null;
+
 /**
  * Routes page names to their initialization logic.
  */
-function triggerPageLogic(pageName) {
+function triggerPageLogic(pageName, signal = null) {
+    // Run cleanup of previous page if exists
+    if (currentPageCleanup) {
+        currentPageCleanup();
+        currentPageCleanup = null;
+    }
+
     switch (pageName) {
         case 'home':
-            initHome();
+            initHome(signal);
             break;
         case 'steam':
-            initSteam();
+            initSteam(signal);
+            currentPageCleanup = cleanupSteam;
             break;
         case 'spotify':
-            initSpotify();
+            initSpotify(signal);
             break;
         case 'lol':
-            initLoL();
+            initLoL(signal);
             break;
         case 'socials':
-            initSocials();
+            initSocials(signal);
             break;
         default:
             console.warn(`No logic defined for page: ${pageName}`);
@@ -46,10 +55,10 @@ document.addEventListener('click', (e) => {
 // Initialization on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
     // Setup back/forward button handling
-    setupPopstate(triggerLogic);
+    setupPopstate(triggerPageLogic);
     
     // Setup mobile swipe navigation
-    setupSwipeNavigation((url) => loadPage(url, true, triggerLogic));
+    setupSwipeNavigation((url) => loadPage(url, true, triggerPageLogic));
 
     // Determine initial page
     const contentDiv = document.getElementById('app-content');
@@ -64,6 +73,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!refreshInterval) {
             refreshInterval = setInterval(() => {
                 if (document.getElementById('home')) {
+                    // Note: This polling doesn't use the router's signal 
+                    // because it happens within the page lifecycle.
+                    // But we could create a local AbortController for it if needed.
                     updateHomeStatus();
                 }
             }, 30000);
@@ -81,8 +93,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
     startPolling();
 });
-
-// Helper wrapper for router
-function triggerLogic(pageName) {
-    triggerPageLogic(pageName);
-}

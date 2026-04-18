@@ -4,20 +4,22 @@
 import { fetchAPI } from '../api.js';
 import { CONFIG, getDominantColor, updateAccentColor, setupSplashHover, preloadImages, renderError } from '../utils.js';
 
-export async function initSpotify() {
+export async function initSpotify(signal = null) {
     const btns = document.querySelectorAll('.time-range-buttons button');
     if (!btns.length) return;
     
+    // Use a WeakMap or a flag to prevent multiple listeners if re-initialized
+    // But since buttons are part of #app-content and replaced, it's usually safe.
     btns.forEach(b => b.addEventListener('click', (e) => {
         btns.forEach(btn => btn.classList.remove('active'));
         e.target.classList.add('active');
-        loadSpotifyData(e.target.dataset.range);
+        loadSpotifyData(e.target.dataset.range, signal);
     }));
 
-    loadSpotifyData('medium_term');
+    loadSpotifyData('medium_term', signal);
 }
 
-async function loadSpotifyData(range) {
+async function loadSpotifyData(range, signal = null) {
     const artistsDiv = document.getElementById('spotify-artists');
     const tracksDiv = document.getElementById('spotify-tracks');
     const nowPlayingDiv = document.getElementById('spotify-now-playing');
@@ -29,14 +31,17 @@ async function loadSpotifyData(range) {
 
     try {
         const [artists, tracks, nowPlaying] = await Promise.all([
-            fetchAPI(`${CONFIG.API.SPOTIFY}/top-artists?range=${range}`),
-            fetchAPI(`${CONFIG.API.SPOTIFY}/top-tracks?range=${range}`),
-            fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`, true).catch(() => null)
+            fetchAPI(`${CONFIG.API.SPOTIFY}/top-artists?range=${range}`, false, signal),
+            fetchAPI(`${CONFIG.API.SPOTIFY}/top-tracks?range=${range}`, false, signal),
+            fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`, true, signal).catch(() => null)
         ]);
+
+        if (signal?.aborted) return;
 
         if (nowPlayingDiv) nowPlayingDiv.style.display = 'none';
         if (nowPlaying?.is_playing) {
             const color = await getDominantColor(nowPlaying.item.album.images[0].url);
+            if (signal?.aborted) return;
             updateAccentColor(color);
         }
 
@@ -44,8 +49,9 @@ async function loadSpotifyData(range) {
         renderTracks(tracksDiv, tracks?.items || []);
 
     } catch(e) {
+        if (e.name === 'AbortError') return;
         console.error("Spotify loading error", e);
-        renderError(artistsDiv, "Spotify-Daten konnten nicht geladen werden.", () => loadSpotifyData(range));
+        renderError(artistsDiv, "Spotify-Daten konnten nicht geladen werden.", () => loadSpotifyData(range, signal));
     }
 }
 

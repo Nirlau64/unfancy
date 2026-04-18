@@ -6,24 +6,38 @@ import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError } 
 
 let steamChartInstance = null;
 
-export async function initSteam() {
+/**
+ * Cleans up resources like Chart.js instances.
+ */
+export function cleanupSteam() {
+    if (steamChartInstance) {
+        console.log('Cleaning up Steam Chart instance');
+        steamChartInstance.destroy();
+        steamChartInstance = null;
+    }
+}
+
+export async function initSteam(signal = null) {
     const profileDiv = document.getElementById('steam-profile');
     const statsDiv = document.getElementById('steam-stats');
     if (!profileDiv || !statsDiv) return;
 
     try {
         const [profile, owned, achievementsRes] = await Promise.all([
-            fetchAPI(`${CONFIG.API.STEAM}/profile?steamid=${CONFIG.STEAM_ID}`),
-            fetchAPI(`${CONFIG.API.STEAM}/owned?steamid=${CONFIG.STEAM_ID}`),
-            fetchAPI(`${CONFIG.API.STEAM}/rarest-achievements?steamid=${CONFIG.STEAM_ID}`).catch(() => ({ rarest: [] }))
+            fetchAPI(`${CONFIG.API.STEAM}/profile?steamid=${CONFIG.STEAM_ID}`, false, signal),
+            fetchAPI(`${CONFIG.API.STEAM}/owned?steamid=${CONFIG.STEAM_ID}`, false, signal),
+            fetchAPI(`${CONFIG.API.STEAM}/rarest-achievements?steamid=${CONFIG.STEAM_ID}`, false, signal).catch(() => ({ rarest: [] }))
         ]);
+
+        if (signal?.aborted) return;
 
         renderSteamProfile(profileDiv, profile);
         renderSteamStats(statsDiv, owned, achievementsRes);
 
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Steam initialization error", e);
-        renderError(profileDiv, "Steam-Daten konnten nicht geladen werden.", initSteam);
+        renderError(profileDiv, "Steam-Daten konnten nicht geladen werden.", () => initSteam(signal));
     }
 }
 

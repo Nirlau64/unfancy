@@ -14,15 +14,21 @@ export const CONFIG = {
     DEFAULT_ACCENT: '#3b82f6'
 };
 
+let latestColorRequestID = 0;
+
 /**
  * Gets dominant color from an image URL to update the theme.
+ * Uses a request ID to prevent race conditions.
  */
 export async function getDominantColor(imgUrl) {
+    const requestID = ++latestColorRequestID;
+    
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.src = imgUrl;
         img.onload = () => {
+            if (requestID !== latestColorRequestID) return; // Ignore stale request
             try {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');

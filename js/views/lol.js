@@ -4,25 +4,29 @@
 import { fetchAPI } from '../api.js';
 import { CONFIG, setupSplashHover, preloadImages, renderError } from '../utils.js';
 
-export async function initLoL() {
+export async function initLoL(signal = null) {
     const profileContainer = document.getElementById('lol-profile');
     const statsContainer = document.getElementById('lol-stats-container');
     if (!profileContainer || !statsContainer) return;
 
     try {
         const [versions, queues] = await Promise.all([
-            fetch('https://ddragon.leagueoflegends.com/api/versions.json').then(r => r.json()),
-            fetch('https://static.developer.riotgames.com/docs/lol/queues.json').then(r => r.json())
+            fetch('https://ddragon.leagueoflegends.com/api/versions.json', { signal }).then(r => r.json()),
+            fetch('https://static.developer.riotgames.com/docs/lol/queues.json', { signal }).then(r => r.json())
         ]);
         
+        if (signal?.aborted) return;
+
         const patch = versions[0];
         const queueMap = {};
         queues.forEach(q => queueMap[q.queueId] = q.description || `Queue ${q.queueId}`);
 
         const [champRes, data] = await Promise.all([
-            fetch(`https://ddragon.leagueoflegends.com/cdn/${patch}/data/en_US/champion.json`).then(r => r.json()),
-            fetchAPI(CONFIG.API.LOL)
+            fetch(`https://ddragon.leagueoflegends.com/cdn/${patch}/data/en_US/champion.json`, { signal }).then(r => r.json()),
+            fetchAPI(CONFIG.API.LOL, false, signal)
         ]);
+
+        if (signal?.aborted) return;
 
         const champMap = {};
         for (const cName in champRes.data) {
@@ -38,8 +42,9 @@ export async function initLoL() {
         renderLoLStats(statsContainer, data, champMap, queueMap);
 
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("LoL initialization error", e);
-        renderError(statsContainer, "LoL-Daten konnten nicht geladen werden.", initLoL);
+        renderError(statsContainer, "LoL-Daten konnten nicht geladen werden.", () => initLoL(signal));
     }
 }
 
