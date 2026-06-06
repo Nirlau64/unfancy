@@ -165,7 +165,9 @@ export function setupSplashHover(container, itemSelector, bgSelector) {
  * Converts a Unix timestamp or Date object into a readable relative time string.
  */
 export function getRelativeTime(date) {
-    const timeMs = typeof date === 'number' ? date : date.getTime();
+    if (!date) return 'Unbekannt';
+    const timeMs = typeof date === 'number' ? date : (date instanceof Date ? date.getTime() : new Date(date).getTime());
+    if (isNaN(timeMs)) return 'Unbekannt';
     const deltaSeconds = Math.round((Date.now() - timeMs) / 1000);
     const cutoffs = [60, 3600, 86400, 86400 * 7, 86400 * 30, 86400 * 365, Infinity];
     const units = ['Sekunde', 'Minute', 'Stunde', 'Tag', 'Woche', 'Monat', 'Jahr'];

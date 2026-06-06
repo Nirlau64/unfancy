@@ -130,7 +130,7 @@ export async function updateHomeStatus(signal = null) {
                 if (lastMatch.you) {
                     const res = (lastMatch.isArena && lastMatch.you.arenaPlacement) ? `${lastMatch.you.arenaPlacement}. Platz` : (lastMatch.you.win ? 'Sieg' : 'Niederlage');
                     const kda = `${lastMatch.you.kills}/${lastMatch.you.deaths}/${lastMatch.you.assists}`;
-                    const champ = lastMatch.you.championId;
+                    const champ = lastMatch.you.championName || lastMatch.you.championId;
                     
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'live-status-item';
