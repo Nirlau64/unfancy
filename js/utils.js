@@ -160,3 +160,51 @@ export function setupSplashHover(container, itemSelector, bgSelector) {
         });
     });
 }
+
+/**
+ * Converts a Unix timestamp or Date object into a readable relative time string.
+ */
+export function getRelativeTime(date) {
+    const timeMs = typeof date === 'number' ? date : date.getTime();
+    const deltaSeconds = Math.round((Date.now() - timeMs) / 1000);
+    const cutoffs = [60, 3600, 86400, 86400 * 7, 86400 * 30, 86400 * 365, Infinity];
+    const units = ['Sekunde', 'Minute', 'Stunde', 'Tag', 'Woche', 'Monat', 'Jahr'];
+    const unitsPlural = ['Sekunden', 'Minuten', 'Stunden', 'Tagen', 'Wochen', 'Monaten', 'Jahren'];
+    
+    let unitIndex = cutoffs.findIndex(cutoff => cutoff > Math.abs(deltaSeconds));
+    let divisor = unitIndex ? cutoffs[unitIndex - 1] : 1;
+    let rtfValue = Math.floor(Math.abs(deltaSeconds) / divisor);
+    
+    if (deltaSeconds === 0) return 'gerade eben';
+    
+    const unitName = rtfValue === 1 ? units[unitIndex] : unitsPlural[unitIndex];
+    return deltaSeconds > 0 ? `vor ${rtfValue} ${unitName}` : `in ${rtfValue} ${unitName}`;
+}
+
+/**
+ * Adds skeleton loading placeholders to a container
+ */
+export function renderSkeleton(container, type = 'list', count = 3) {
+    if (!container) return;
+    container.innerHTML = '';
+    
+    const wrap = document.createElement('div');
+    wrap.className = 'skeleton-wrap';
+    
+    for (let i=0; i<count; i++) {
+        const item = document.createElement('div');
+        item.className = `skeleton skeleton-${type}`;
+        wrap.appendChild(item);
+    }
+    
+    container.appendChild(wrap);
+}
+
+/**
+ * Removes skeleton loading placeholders from a container
+ */
+export function removeSkeleton(container) {
+    if (!container) return;
+    const wrap = container.querySelector('.skeleton-wrap');
+    if (wrap) container.removeChild(wrap);
+}

@@ -21,6 +21,9 @@ function triggerPageLogic(pageName, signal = null) {
         currentPageCleanup = null;
     }
 
+    // Reset page title (in case it was changed by Spotify Live Status)
+    document.title = 'Unfancy - Dashboard';
+
     switch (pageName) {
         case 'home':
             initHome(signal);
@@ -52,12 +55,37 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// Global keyboard listener for tab navigation (Arrow Keys)
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const navLinks = Array.from(document.querySelectorAll('.nav-link'));
+        const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
+        if (currentIndex === -1) return;
+
+        let targetIndex;
+        if (e.key === 'ArrowLeft') {
+            targetIndex = (currentIndex - 1 + navLinks.length) % navLinks.length;
+        } else {
+            targetIndex = (currentIndex + 1) % navLinks.length;
+        }
+        
+        loadPage(navLinks[targetIndex].dataset.page, true, triggerPageLogic);
+    }
+});
+
 // Initialization on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
     // Dynamic footer year
     const footerYear = document.getElementById('footer-year');
     if (footerYear) {
         footerYear.textContent = new Date().getFullYear();
+    }
+
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.warn('Service Worker registration failed:', err);
+        });
     }
 
     // Setup back/forward button handling

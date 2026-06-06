@@ -2,7 +2,7 @@
  * View Controller: Spotify
  */
 import { fetchAPI } from '../api.js';
-import { CONFIG, getDominantColor, updateAccentColor, setupSplashHover, preloadImages, renderError } from '../utils.js';
+import { CONFIG, getDominantColor, updateAccentColor, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
 
 let spotifyAbortController = null;
 
@@ -31,9 +31,11 @@ async function loadSpotifyData(range, signal = null) {
     const nowPlayingDiv = document.getElementById('spotify-now-playing');
     if (!artistsDiv || !tracksDiv) return;
 
-    // Show loading indicators with A11y
-    renderLoading(artistsDiv, 'Meine Top Künstler');
-    renderLoading(tracksDiv, 'Meine Top Titel');
+    // Show skeleton loaders
+    renderSkeleton(artistsDiv, 'grid', 8);
+    renderSkeleton(tracksDiv, 'grid', 8);
+
+    const fetchTime = Date.now();
 
     try {
         const [artists, tracks, nowPlaying] = await Promise.all([
@@ -51,8 +53,8 @@ async function loadSpotifyData(range, signal = null) {
             updateAccentColor(color);
         }
 
-        renderArtists(artistsDiv, artists?.items || []);
-        renderTracks(tracksDiv, tracks?.items || []);
+        renderArtists(artistsDiv, artists?.items || [], fetchTime);
+        renderTracks(tracksDiv, tracks?.items || [], fetchTime);
 
     } catch(e) {
         if (e.name === 'AbortError') return;
@@ -61,21 +63,7 @@ async function loadSpotifyData(range, signal = null) {
     }
 }
 
-function renderLoading(container, title) {
-    while (container.firstChild) container.removeChild(container.firstChild);
-    
-    const h2 = document.createElement('h2');
-    h2.textContent = title;
-    container.appendChild(h2);
-
-    const loader = document.createElement('div');
-    loader.className = 'text-center text-muted';
-    loader.setAttribute('aria-live', 'polite');
-    loader.textContent = 'Lade...';
-    container.appendChild(loader);
-}
-
-function renderArtists(container, items) {
+function renderArtists(container, items, fetchTime) {
     while (container.firstChild) container.removeChild(container.firstChild);
     container.classList.add('section-relative');
 
@@ -116,11 +104,21 @@ function renderArtists(container, items) {
     });
 
     content.appendChild(grid);
+    
+    if (fetchTime) {
+        const timeP = document.createElement('p');
+        timeP.className = 'text-center text-muted';
+        timeP.style.marginTop = '15px';
+        timeP.style.fontSize = '0.8em';
+        timeP.textContent = `Zuletzt aktualisiert: ${getRelativeTime(fetchTime)}`;
+        content.appendChild(timeP);
+    }
+
     container.appendChild(content);
     setupSplashHover(container, '.media-card', '.splash-bg');
 }
 
-function renderTracks(container, items) {
+function renderTracks(container, items, fetchTime) {
     while (container.firstChild) container.removeChild(container.firstChild);
     container.classList.add('section-relative');
 
@@ -166,6 +164,16 @@ function renderTracks(container, items) {
     });
 
     content.appendChild(grid);
+    
+    if (fetchTime) {
+        const timeP = document.createElement('p');
+        timeP.className = 'text-center text-muted';
+        timeP.style.marginTop = '15px';
+        timeP.style.fontSize = '0.8em';
+        timeP.textContent = `Zuletzt aktualisiert: ${getRelativeTime(fetchTime)}`;
+        content.appendChild(timeP);
+    }
+
     container.appendChild(content);
     setupSplashHover(container, '.media-card', '.splash-bg');
 }

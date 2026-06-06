@@ -2,12 +2,17 @@
  * View Controller: League of Legends
  */
 import { fetchAPI } from '../api.js';
-import { CONFIG, setupSplashHover, preloadImages, renderError } from '../utils.js';
+import { CONFIG, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
 
 export async function initLoL(signal = null) {
     const profileContainer = document.getElementById('lol-profile');
     const statsContainer = document.getElementById('lol-stats-container');
     if (!profileContainer || !statsContainer) return;
+
+    renderSkeleton(profileContainer, 'list', 1);
+    renderSkeleton(statsContainer, 'grid', 4);
+
+    const fetchTime = Date.now();
 
     try {
         const [versions, queues] = await Promise.all([
@@ -39,7 +44,7 @@ export async function initLoL(signal = null) {
         }
 
         renderLoLProfile(profileContainer, data);
-        renderLoLStats(statsContainer, data, champMap, queueMap);
+        renderLoLStats(statsContainer, data, champMap, queueMap, fetchTime);
 
     } catch (e) {
         if (e.name === 'AbortError') return;
@@ -66,7 +71,7 @@ function renderLoLProfile(container, data) {
     }
 }
 
-function renderLoLStats(container, data, champMap, queueMap) {
+function renderLoLStats(container, data, champMap, queueMap, fetchTime) {
     while (container.firstChild) container.removeChild(container.firstChild);
     container.classList.add('section-relative');
 
@@ -125,22 +130,58 @@ function renderLoLStats(container, data, champMap, queueMap) {
         h3Recent.textContent = 'Letzte 10 Spiele';
         content.appendChild(h3Recent);
 
+        const matches10 = data.recentMatches.slice(0, 10);
+        
+        // Aggregated Stats
+        const srMatches = matches10.filter(m => !m.isArena);
+        let wins = 0, kills = 0, deaths = 0, assists = 0, cs = 0;
+        
+        matches10.forEach(m => {
+            if (m.you && m.you.win) wins++;
+            if (m.you) {
+                kills += m.you.kills || 0;
+                deaths += m.you.deaths || 0;
+                assists += m.you.assists || 0;
+            }
+        });
+        srMatches.forEach(m => { if(m.you) cs += m.you.cs || 0; });
+
+        const winrate = matches10.length ? ((wins / matches10.length) * 100).toFixed(0) : 0;
+        const avgK = matches10.length ? (kills / matches10.length).toFixed(1) : 0;
+        const avgD = matches10.length ? (deaths / matches10.length).toFixed(1) : 0;
+        const avgA = matches10.length ? (assists / matches10.length).toFixed(1) : 0;
+        const avgCS = srMatches.length ? Math.round(cs / srMatches.length) : 0;
+
+        const statsRow = document.createElement('div');
+        statsRow.style.display = 'flex';
+        statsRow.style.justifyContent = 'center';
+        statsRow.style.gap = '20px';
+        statsRow.style.flexWrap = 'wrap';
+        statsRow.style.marginBottom = '20px';
+        statsRow.innerHTML = `
+            <div style="background:var(--bg-card); padding:10px 20px; border-radius:10px; border:1px solid var(--border);"><strong>Winrate:</strong> <span style="color:${winrate >= 50 ? '#4ade80' : '#f43f5e'}">${winrate}%</span></div>
+            <div style="background:var(--bg-card); padding:10px 20px; border-radius:10px; border:1px solid var(--border);"><strong>Ø KDA:</strong> ${avgK} / ${avgD} / ${avgA}</div>
+            ${srMatches.length ? `<div style="background:var(--bg-card); padding:10px 20px; border-radius:10px; border:1px solid var(--border);"><strong>Ø CS (SR):</strong> ${avgCS}</div>` : ''}
+        `;
+        content.appendChild(statsRow);
+
         const tableWrap = document.createElement('div');
         tableWrap.className = 'lol-table-wrap';
         
         const table = document.createElement('table');
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
-        ['Champion', 'K/D/A', 'CS', 'Dauer', 'Modus', 'Ergebnis'].forEach(text => {
+        ['Champion', 'K/D/A', 'CS', 'Dauer', 'Modus', 'Datum', 'Ergebnis'].forEach(text => {
             const th = document.createElement('th');
             th.textContent = text;
+            if (text === 'Datum') th.className = 'desktop-only';
             headerRow.appendChild(th);
         });
         thead.appendChild(headerRow);
         table.appendChild(thead);
 
         const tbody = document.createElement('tbody');
-        data.recentMatches.slice(0, 10).forEach(m => {
+        matches10.forEach(m => {
             if (!m.you) return;
             const cd = champMap[m.you.championId];
             const res = (m.isArena && m.you.arenaPlacement) ? `${m.you.arenaPlacement}. Platz` : (m.you.win ? 'Sieg' : 'Niederlage');
@@ -182,8 +223,15 @@ function renderLoLStats(container, data, champMap, queueMap) {
             if (modeName.toUpperCase() === 'CHERRY') modeName = 'Arena';
             
             const tdMode = document.createElement('td');
-            tdMode.textContent = modeName;
+            tdMode.innerHTML = `<span>${modeName}</span><br><span class="mobile-only text-muted" style="font-size:0.85em; white-space:nowrap;">${getRelativeTime(m.gameCreation)}</span>`;
             tr.appendChild(tdMode);
+
+            // Date (Desktop only)
+            const tdDate = document.createElement('td');
+            tdDate.className = 'desktop-only';
+            tdDate.style.whiteSpace = 'nowrap';
+            tdDate.textContent = getRelativeTime(m.gameCreation);
+            tr.appendChild(tdDate);
 
             // Result
             const tdRes = document.createElement('td');
@@ -196,6 +244,15 @@ function renderLoLStats(container, data, champMap, queueMap) {
         table.appendChild(tbody);
         tableWrap.appendChild(table);
         content.appendChild(tableWrap);
+    }
+
+    if (fetchTime) {
+        const timeP = document.createElement('p');
+        timeP.className = 'text-center text-muted';
+        timeP.style.marginTop = '20px';
+        timeP.style.fontSize = '0.8em';
+        timeP.textContent = `Zuletzt aktualisiert: ${getRelativeTime(fetchTime)}`;
+        content.appendChild(timeP);
     }
 
     container.appendChild(content);

@@ -2,7 +2,7 @@
  * View Controller: Steam
  */
 import { fetchAPI } from '../api.js';
-import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError } from '../utils.js';
+import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
 
 /**
  * Dynamically loads Chart.js only when needed (~200KB).
@@ -36,6 +36,11 @@ export async function initSteam(signal = null) {
     const statsDiv = document.getElementById('steam-stats');
     if (!profileDiv || !statsDiv) return;
 
+    renderSkeleton(profileDiv, 'list', 1);
+    renderSkeleton(statsDiv, 'grid', 8);
+
+    const fetchTime = Date.now();
+
     try {
         const [profile, owned, achievementsRes] = await Promise.all([
             fetchAPI(`${CONFIG.API.STEAM}/profile?steamid=${CONFIG.STEAM_ID}`, false, signal),
@@ -46,7 +51,7 @@ export async function initSteam(signal = null) {
         if (signal?.aborted) return;
 
         renderSteamProfile(profileDiv, profile);
-        renderSteamStats(statsDiv, owned, achievementsRes);
+        renderSteamStats(statsDiv, owned, achievementsRes, fetchTime);
 
     } catch (e) {
         if (e.name === 'AbortError') return;
@@ -83,7 +88,7 @@ function renderSteamProfile(container, profile) {
     container.appendChild(header);
 }
 
-function renderSteamStats(container, owned, achievementsRes) {
+function renderSteamStats(container, owned, achievementsRes, fetchTime) {
     while (container.firstChild) container.removeChild(container.firstChild);
     container.classList.add('section-relative');
 
@@ -115,6 +120,25 @@ function renderSteamStats(container, owned, achievementsRes) {
     pBacklog.textContent = `${unplayed} ungespielte Spiele im Backlog`;
     content.appendChild(pBacklog);
 
+    // Sorting controls
+    let sortBy = 'playtime';
+    let sortDesc = true;
+
+    const sortControls = document.createElement('div');
+    sortControls.className = 'time-range-buttons'; // reuse existing style
+    sortControls.style.marginBottom = '20px';
+
+    const btnSortTime = document.createElement('button');
+    btnSortTime.textContent = 'Nach Spielzeit (absteigend)';
+    btnSortTime.className = 'active';
+
+    const btnSortName = document.createElement('button');
+    btnSortName.textContent = 'Nach Name';
+
+    sortControls.appendChild(btnSortTime);
+    sortControls.appendChild(btnSortName);
+    content.appendChild(sortControls);
+
     const h3MostPlayed = document.createElement('h3');
     h3MostPlayed.className = 'text-center';
     h3MostPlayed.textContent = 'Meistgespielte Spiele';
@@ -122,34 +146,77 @@ function renderSteamStats(container, owned, achievementsRes) {
 
     const grid = document.createElement('div');
     grid.className = 'steam-grid';
-
-    top16.forEach(g => {
-        const card = document.createElement('a');
-        card.href = `https://store.steampowered.com/app/${g.appid}`;
-        card.target = '_blank';
-        card.rel = 'noopener noreferrer';
-        card.className = 'steam-game-card';
-        card.dataset.splash = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_hero.jpg`;
-
-        const img = document.createElement('img');
-        img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/capsule_231x87.jpg`;
-        img.onerror = () => { img.src = `https://media.steampowered.com/steamcommunity/public/images/apps/${g.appid}/${encodeURIComponent(g.img_logo_url || '')}.jpg`; };
-        img.alt = g.name;
-        card.appendChild(img);
-
-        const title = document.createElement('div');
-        title.className = 'steam-game-title';
-        title.textContent = g.name;
-        card.appendChild(title);
-
-        const time = document.createElement('div');
-        time.className = 'text-muted';
-        time.textContent = `${minutesToHours(g.playtime_minutes)} Std.`;
-        card.appendChild(time);
-
-        grid.appendChild(card);
-    });
     content.appendChild(grid);
+
+    function updateGrid() {
+        grid.innerHTML = '';
+        
+        const currentSorted = [...validGames].sort((a,b) => {
+            if (sortBy === 'name') {
+                return sortDesc ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
+            } else {
+                return sortDesc ? b.playtime_minutes - a.playtime_minutes : a.playtime_minutes - b.playtime_minutes;
+            }
+        });
+        const currentTop16 = currentSorted.slice(0, 16);
+
+        currentTop16.forEach(g => {
+            const card = document.createElement('a');
+            card.href = `https://store.steampowered.com/app/${g.appid}`;
+            card.target = '_blank';
+            card.rel = 'noopener noreferrer';
+            card.className = 'steam-game-card';
+            card.dataset.splash = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_hero.jpg`;
+
+            const img = document.createElement('img');
+            img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/capsule_231x87.jpg`;
+            img.onerror = () => { img.src = `https://media.steampowered.com/steamcommunity/public/images/apps/${g.appid}/${encodeURIComponent(g.img_logo_url || '')}.jpg`; };
+            img.alt = g.name;
+            card.appendChild(img);
+
+            const title = document.createElement('div');
+            title.className = 'steam-game-title';
+            title.textContent = g.name;
+            card.appendChild(title);
+
+            const time = document.createElement('div');
+            time.className = 'text-muted';
+            const percentage = ((g.playtime_minutes / totalMins) * 100).toFixed(1);
+            time.textContent = `${minutesToHours(g.playtime_minutes)} Std. (${percentage}%)`;
+            card.appendChild(time);
+
+            grid.appendChild(card);
+        });
+        
+        // Re-attach hover listeners for the new DOM nodes
+        setupSplashHover(container, '.steam-game-card', '.splash-bg');
+    }
+
+    btnSortTime.addEventListener('click', () => {
+        if (sortBy === 'playtime') sortDesc = !sortDesc;
+        else { sortBy = 'playtime'; sortDesc = true; }
+        
+        btnSortTime.className = 'active';
+        btnSortName.className = '';
+        btnSortTime.textContent = `Nach Spielzeit (${sortDesc ? 'absteigend' : 'aufsteigend'})`;
+        btnSortName.textContent = 'Nach Name';
+        updateGrid();
+    });
+
+    btnSortName.addEventListener('click', () => {
+        if (sortBy === 'name') sortDesc = !sortDesc;
+        else { sortBy = 'name'; sortDesc = false; }
+        
+        btnSortName.className = 'active';
+        btnSortTime.className = '';
+        btnSortName.textContent = `Nach Name (${sortDesc ? 'Z-A' : 'A-Z'})`;
+        btnSortTime.textContent = 'Nach Spielzeit';
+        updateGrid();
+    });
+
+    updateGrid();
+
+    // (removed old loop because it's now in updateGrid)
 
     if (achievementsRes?.rarest?.length) {
         content.appendChild(document.createElement('hr'));
@@ -193,6 +260,15 @@ function renderSteamStats(container, owned, achievementsRes) {
             achGrid.appendChild(achCard);
         });
         content.appendChild(achGrid);
+    }
+
+    if (fetchTime) {
+        const timeP = document.createElement('p');
+        timeP.className = 'text-center text-muted';
+        timeP.style.marginTop = '20px';
+        timeP.style.fontSize = '0.8em';
+        timeP.textContent = `Zuletzt aktualisiert: ${getRelativeTime(fetchTime)}`;
+        content.appendChild(timeP);
     }
 
     container.appendChild(content);
