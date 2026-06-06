@@ -178,8 +178,11 @@ function renderLoLStats(container, data, champMap, queueMap) {
             tr.appendChild(tdDuration);
 
             // Mode
+            let modeName = queueMap[m.queueId] || m.gameModeReadable || m.gameMode || '-';
+            if (modeName.toUpperCase() === 'CHERRY') modeName = 'Arena';
+            
             const tdMode = document.createElement('td');
-            tdMode.textContent = queueMap[m.queueId] || m.gameModeReadable || m.gameMode || '-';
+            tdMode.textContent = modeName;
             tr.appendChild(tdMode);
 
             // Result
