@@ -4,6 +4,8 @@
 import { fetchAPI } from '../api.js';
 import { CONFIG, getDominantColor, updateAccentColor, setupSplashHover, preloadImages, renderError } from '../utils.js';
 
+let spotifyAbortController = null;
+
 export async function initSpotify(signal = null) {
     const btns = document.querySelectorAll('.time-range-buttons button');
     if (!btns.length) return;
@@ -13,10 +15,14 @@ export async function initSpotify(signal = null) {
     btns.forEach(b => b.addEventListener('click', (e) => {
         btns.forEach(btn => btn.classList.remove('active'));
         e.target.classList.add('active');
-        loadSpotifyData(e.target.dataset.range, signal);
+        // Abort previous data load on rapid tab switches
+        if (spotifyAbortController) spotifyAbortController.abort();
+        spotifyAbortController = new AbortController();
+        loadSpotifyData(e.target.dataset.range, spotifyAbortController.signal);
     }));
 
-    loadSpotifyData('medium_term', signal);
+    spotifyAbortController = new AbortController();
+    loadSpotifyData('medium_term', spotifyAbortController.signal);
 }
 
 async function loadSpotifyData(range, signal = null) {
@@ -93,6 +99,7 @@ function renderArtists(container, items) {
         const card = document.createElement('a');
         card.href = a.external_urls.spotify;
         card.target = '_blank';
+        card.rel = 'noopener noreferrer';
         card.className = 'media-card artist';
         card.dataset.splash = a.images[0]?.url || '';
 
@@ -137,6 +144,7 @@ function renderTracks(container, items) {
         const card = document.createElement('a');
         card.href = t.external_urls.spotify;
         card.target = '_blank';
+        card.rel = 'noopener noreferrer';
         card.className = 'media-card track';
         card.dataset.splash = t.album.images[0]?.url || '';
 

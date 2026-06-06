@@ -2,7 +2,7 @@
  * View Controller: Home
  */
 import { fetchAPI } from '../api.js';
-import { CONFIG, getDominantColor, updateAccentColor, escapeHTML } from '../utils.js';
+import { CONFIG, getDominantColor, updateAccentColor } from '../utils.js';
 
 export async function initHome(signal = null) {
     await updateHomeStatus(signal);
@@ -48,6 +48,7 @@ export async function updateHomeStatus(signal = null) {
             const link = document.createElement('a');
             link.href = track.external_urls?.spotify || '#';
             link.target = '_blank';
+            link.rel = 'noopener noreferrer';
             link.style.display = 'flex';
 
             const img = document.createElement('img');
@@ -98,6 +99,7 @@ export async function updateHomeStatus(signal = null) {
             const link = document.createElement('a');
             link.href = `https://store.steampowered.com/app/${stData.appid || ''}`;
             link.target = '_blank';
+            link.rel = 'noopener noreferrer';
             link.className = 'live-steam-link';
             link.textContent = stData.game;
             

@@ -1,18 +1,32 @@
 /**
- * Unfancy Dashboard - Router
+ * Unfancy Dashboard - Router (Fragment-based SPA)
  */
 
 import { renderError } from './utils.js';
+
+/**
+ * Maps page names to their fragment file paths.
+ */
+const PAGE_MAP = {
+    home: 'pages/home.html',
+    steam: 'pages/steam.html',
+    spotify: 'pages/spotify.html',
+    lol: 'pages/lol.html',
+    socials: 'pages/socials.html'
+};
 
 const pageCache = new Map();
 let currentAbortController = null;
 
 /**
- * Loads a page by URL, handles caching, transitions and A11y focus.
+ * Loads a page by name, fetches its fragment, handles caching, transitions and A11y focus.
+ * @param {string} pageName - The page identifier (e.g. 'steam', 'home')
+ * @param {boolean} pushState - Whether to push a new history entry
+ * @param {Function} triggerLogicFn - Callback to initialize the loaded page's JS logic
  */
-export async function loadPage(url, pushState = true, triggerLogicFn) {
+export async function loadPage(pageName, pushState = true, triggerLogicFn) {
     const contentDiv = document.getElementById('app-content');
-    if (!contentDiv) return;
+    if (!contentDiv || !PAGE_MAP[pageName]) return;
 
     // Abort previous requests
     if (currentAbortController) {
@@ -26,28 +40,17 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
 
     try {
         let newContentHTML;
-        let pageName;
 
         // Check Cache
-        if (pageCache.has(url)) {
-            const cached = pageCache.get(url);
-            newContentHTML = cached.html;
-            pageName = cached.name;
+        if (pageCache.has(pageName)) {
+            newContentHTML = pageCache.get(pageName);
         } else {
-            const response = await fetch(url, { signal });
+            const response = await fetch(PAGE_MAP[pageName], { signal });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const htmlText = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlText, 'text/html');
-            const newMain = doc.getElementById('app-content');
-            
-            if (!newMain) throw new Error("Invalid structure");
-            
-            newContentHTML = newMain.innerHTML;
-            pageName = newMain.firstElementChild.id;
-            
+            newContentHTML = await response.text();
+
             // Store in cache
-            pageCache.set(url, { html: newContentHTML, name: pageName });
+            pageCache.set(pageName, newContentHTML);
         }
 
         // Wait for fade-out animation
@@ -58,9 +61,10 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
 
         // Update DOM
         contentDiv.innerHTML = newContentHTML;
-        
+
         if (pushState) {
-            window.history.pushState({ path: url }, '', url);
+            const url = pageName === 'home' ? '/' : `/?page=${pageName}`;
+            window.history.pushState({ page: pageName }, '', url);
         }
 
         // Update Nav Links
@@ -70,7 +74,6 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
 
         // Trigger Page Specific Logic
         if (triggerLogicFn) {
-            // Pass the signal to the view logic to handle internal fetches
             triggerLogicFn(pageName, signal);
         }
 
@@ -88,16 +91,37 @@ export async function loadPage(url, pushState = true, triggerLogicFn) {
         if (e.name === 'AbortError') return;
         console.error("Routing Error:", e);
         contentDiv.classList.remove('fade-out');
-        renderError(contentDiv, `Seite konnte nicht geladen werden: ${e.message}`, () => loadPage(url, pushState, triggerLogicFn));
+        renderError(contentDiv, `Seite konnte nicht geladen werden: ${e.message}`, () => loadPage(pageName, pushState, triggerLogicFn));
     }
+}
+
+/**
+ * Pre-caches a page's HTML so navigating back to it is instant.
+ * Used to cache the inline home content on first load.
+ */
+export function preCachePage(pageName, html) {
+    if (!pageCache.has(pageName)) {
+        pageCache.set(pageName, html);
+    }
+}
+
+/**
+ * Reads the current page from the URL query parameter.
+ * @returns {string} The page name (defaults to 'home')
+ */
+export function getPageFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    return (page && PAGE_MAP[page]) ? page : 'home';
 }
 
 /**
  * Handles browser back/forward buttons.
  */
 export function setupPopstate(triggerLogicFn) {
-    window.addEventListener('popstate', () => {
-        loadPage(window.location.pathname, false, triggerLogicFn);
+    window.addEventListener('popstate', (e) => {
+        const pageName = e.state?.page || getPageFromURL();
+        loadPage(pageName, false, triggerLogicFn);
     });
 }
 
@@ -110,6 +134,8 @@ export function setupSwipeNavigation(loadPageFn) {
     const swipeThreshold = 80;
 
     document.addEventListener('touchstart', e => {
+        // Only track single-finger touches to avoid multi-touch false positives
+        if (e.touches.length !== 1) return;
         touchStartX = e.changedTouches[0].screenX;
     }, { passive: true });
 
@@ -129,7 +155,13 @@ export function setupSwipeNavigation(loadPageFn) {
         }
 
         if (targetIndex !== -1) {
-            loadPageFn(navLinks[targetIndex].getAttribute('href'));
+            loadPageFn(navLinks[targetIndex].dataset.page);
         }
+    }, { passive: true });
+
+    // Reset touch state on cancel to prevent stale values
+    document.addEventListener('touchcancel', () => {
+        touchStartX = 0;
+        touchEndX = 0;
     }, { passive: true });
 }

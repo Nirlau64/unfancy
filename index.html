@@ -3,13 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net www.instagram.com connect.facebook.net platform.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com;">
     <meta name="theme-color" content="#3b82f6">
+    <meta name="description" content="Persönliches Dashboard von Laurin — Gaming-Statistiken, Spotify & mehr.">
+    <meta property="og:title" content="Unfancy Dashboard">
+    <meta property="og:description" content="Gaming, Musik & Social Media Hub von Laurin">
+    <meta property="og:image" content="https://nirlau.de/assets/favicon.png">
+    <meta property="og:url" content="https://nirlau.de">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Unfancy Dashboard">
+    <meta name="twitter:description" content="Gaming, Musik & Social Media Hub von Laurin">
+    <meta name="twitter:image" content="https://nirlau.de/assets/favicon.png">
     <title>Unfancy - Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="icon" type="image/png" href="assets/favicon.png">
 </head>
 <body>
@@ -22,11 +32,11 @@
 
         <!-- Navigation -->
         <nav class="nav-tabs" id="nav-tabs">
-            <a href="index.html" class="nav-link active" data-page="home">Home</a>
-            <a href="steam.html" class="nav-link" data-page="steam">Steam</a>
-            <a href="spotify.html" class="nav-link" data-page="spotify">Spotify</a>
-            <a href="lol.html" class="nav-link" data-page="lol">League of Legends</a>
-            <a href="socials.html" class="nav-link" data-page="socials">Socials</a>
+            <a href="/" class="nav-link active" data-page="home">Home</a>
+            <a href="/?page=steam" class="nav-link" data-page="steam">Steam</a>
+            <a href="/?page=spotify" class="nav-link" data-page="spotify">Spotify</a>
+            <a href="/?page=lol" class="nav-link" data-page="lol">League of Legends</a>
+            <a href="/?page=socials" class="nav-link" data-page="socials">Socials</a>
         </nav>
 
         <!-- Dieser Container wird ausgetauscht -->
@@ -48,9 +58,7 @@
 
     </div>
 
-    <footer>
-        <p>2026 Unfancy - Laurin</p>
-    </footer>
+    <footer><p><span id="footer-year"></span> Unfancy - Laurin</p></footer>
 
     <!-- Core App Logic & Router (ES6 Module) -->
     <script type="module" src="js/main.js"></script>

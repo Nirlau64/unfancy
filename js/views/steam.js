@@ -4,6 +4,20 @@
 import { fetchAPI } from '../api.js';
 import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError } from '../utils.js';
 
+/**
+ * Dynamically loads Chart.js only when needed (~200KB).
+ */
+async function loadChartJS() {
+    if (window.Chart) return;
+    await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
 let steamChartInstance = null;
 
 /**
@@ -61,6 +75,7 @@ function renderSteamProfile(container, profile) {
     const link = document.createElement('a');
     link.href = profile.profileurl;
     link.target = '_blank';
+    link.rel = 'noopener noreferrer';
     link.textContent = 'Steam-Profil öffnen';
     info.appendChild(link);
     
@@ -112,12 +127,13 @@ function renderSteamStats(container, owned, achievementsRes) {
         const card = document.createElement('a');
         card.href = `https://store.steampowered.com/app/${g.appid}`;
         card.target = '_blank';
+        card.rel = 'noopener noreferrer';
         card.className = 'steam-game-card';
         card.dataset.splash = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_hero.jpg`;
 
         const img = document.createElement('img');
         img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/capsule_231x87.jpg`;
-        img.onerror = () => { img.src = `https://media.steampowered.com/steamcommunity/public/images/apps/${g.appid}/${g.img_logo_url}.jpg`; };
+        img.onerror = () => { img.src = `https://media.steampowered.com/steamcommunity/public/images/apps/${g.appid}/${encodeURIComponent(g.img_logo_url || '')}.jpg`; };
         img.alt = g.name;
         card.appendChild(img);
 
@@ -185,9 +201,16 @@ function renderSteamStats(container, owned, achievementsRes) {
     renderChart(sortedGames, totalMins);
 }
 
-function renderChart(sortedGames, totalMins) {
+async function renderChart(sortedGames, totalMins) {
     const chartCanvas = document.getElementById('steam-chart');
     if (!chartCanvas) return;
+
+    try {
+        await loadChartJS();
+    } catch (e) {
+        console.error('Chart.js konnte nicht geladen werden:', e);
+        return;
+    }
 
     if (steamChartInstance) steamChartInstance.destroy();
 

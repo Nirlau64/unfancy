@@ -2,7 +2,7 @@
  * Unfancy Dashboard - Main Entry Point (ES6 Module)
  */
 
-import { loadPage, setupPopstate, setupSwipeNavigation } from './router.js';
+import { loadPage, setupPopstate, setupSwipeNavigation, preCachePage, getPageFromURL } from './router.js';
 import { initHome, updateHomeStatus } from './views/home.js';
 import { initSteam, cleanupSteam } from './views/steam.js';
 import { initSpotify } from './views/spotify.js';
@@ -48,23 +48,39 @@ document.addEventListener('click', (e) => {
     const link = e.target.closest('.nav-link');
     if (link) {
         e.preventDefault();
-        loadPage(link.getAttribute('href'), true, triggerPageLogic);
+        loadPage(link.dataset.page, true, triggerPageLogic);
     }
 });
 
 // Initialization on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
+    // Dynamic footer year
+    const footerYear = document.getElementById('footer-year');
+    if (footerYear) {
+        footerYear.textContent = new Date().getFullYear();
+    }
+
     // Setup back/forward button handling
     setupPopstate(triggerPageLogic);
     
     // Setup mobile swipe navigation
-    setupSwipeNavigation((url) => loadPage(url, true, triggerPageLogic));
+    setupSwipeNavigation((pageName) => loadPage(pageName, true, triggerPageLogic));
 
-    // Determine initial page
+    // Pre-cache the inline home content so returning to home is instant
     const contentDiv = document.getElementById('app-content');
-    if (contentDiv && contentDiv.firstElementChild) {
-        const initialPage = contentDiv.firstElementChild.id;
-        triggerPageLogic(initialPage);
+    if (contentDiv) {
+        preCachePage('home', contentDiv.innerHTML);
+    }
+
+    // Determine initial page from URL (?page= param or default to home)
+    const requestedPage = getPageFromURL();
+
+    if (requestedPage !== 'home') {
+        // User arrived via redirect stub (e.g. ?page=steam) — load that page
+        loadPage(requestedPage, false, triggerPageLogic);
+    } else {
+        // Home content is already inline — just trigger its JS logic
+        triggerPageLogic('home');
     }
 
     // Live Status Auto-Refresh (Home only)
@@ -73,9 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!refreshInterval) {
             refreshInterval = setInterval(() => {
                 if (document.getElementById('home')) {
-                    // Note: This polling doesn't use the router's signal 
-                    // because it happens within the page lifecycle.
-                    // But we could create a local AbortController for it if needed.
                     updateHomeStatus();
                 }
             }, 30000);
