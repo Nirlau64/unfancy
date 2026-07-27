@@ -141,6 +141,10 @@ export function setupSwipeNavigation(loadPageFn) {
 
     document.addEventListener('touchend', e => {
         touchEndX = e.changedTouches[0].screenX;
+
+        // Don't navigate if the user is scrolling a horizontally-scrollable element
+        if (e.target.closest('.lol-table-wrap')) return;
+
         const navLinks = Array.from(document.querySelectorAll('.nav-link'));
         const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
         if (currentIndex === -1) return;

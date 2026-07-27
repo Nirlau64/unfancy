@@ -274,7 +274,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 }
 .champ-list img { width: 60px; height: 60px; border-radius: 8px; margin-bottom: 8px; }
 
-.lol-table-wrap { overflow-x: auto; position: relative; }
+.lol-table-wrap { overflow-x: auto; position: relative; touch-action: pan-x; }
 table { width: 100%; border-collapse: collapse; min-width: 600px; font-size: 0.95em; position: relative; z-index: 2; }
 th, td { padding: 10px 12px; text-align: center; border-bottom: 1px solid var(--border); }
 th { background: var(--border); }
