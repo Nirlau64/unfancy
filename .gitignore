@@ -52,3 +52,9 @@ GEMINI.md
 # Note: Keeping dev.nix is recommended, but ignoring local state
 # (Adjusted based on your current preference)
 /.idx
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
