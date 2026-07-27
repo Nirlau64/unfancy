@@ -2,7 +2,7 @@
  * View Controller: Home
  */
 import { fetchAPI } from '../api.js';
-import { CONFIG, getDominantColor, updateAccentColor } from '../utils.js';
+import { CONFIG, getDominantColor, updateAccentColor, escapeHTML } from '../utils.js';
 
 let cachedLoLStatus = null;
 let lolFetchAttempted = false;
@@ -137,7 +137,7 @@ export async function updateHomeStatus(signal = null) {
                     itemDiv.style.marginTop = '10px';
                     
                     const p = document.createElement('p');
-                    p.innerHTML = `🎮 Letztes LoL Match: <strong style="color:${res === 'Sieg' ? '#4ade80' : (res === 'Niederlage' ? '#f43f5e' : 'inherit')}">${res}</strong> als ${champ} (${kda})`;
+                    p.innerHTML = `🎮 Letztes LoL Match: <strong style="color:${res === 'Sieg' ? '#4ade80' : (res === 'Niederlage' ? '#f43f5e' : 'inherit')}">${escapeHTML(res)}</strong> als ${escapeHTML(champ)} (${escapeHTML(kda)})`;
                     itemDiv.appendChild(p);
                     
                     cachedLoLStatus = itemDiv;

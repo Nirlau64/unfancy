@@ -12,7 +12,7 @@ export async function fetchAPI(url, useCacheBusting = false, signal = null) {
             const sep = url.includes('?') ? '&' : '?';
             finalUrl = `${url}${sep}t=${Date.now()}`;
         }
-        const res = await fetch(finalUrl, { signal });
+        const res = await fetch(finalUrl, { signal: AbortSignal.any([AbortSignal.timeout(10000), signal].filter(Boolean)) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
     } catch (err) {

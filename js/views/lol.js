@@ -2,7 +2,7 @@
  * View Controller: League of Legends
  */
 import { fetchAPI } from '../api.js';
-import { CONFIG, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
+import { CONFIG, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton, escapeHTML } from '../utils.js';
 
 export async function initLoL(signal = null) {
     const profileContainer = document.getElementById('lol-profile');
@@ -223,7 +223,7 @@ function renderLoLStats(container, data, champMap, queueMap, fetchTime) {
             if (modeName.toUpperCase() === 'CHERRY') modeName = 'Arena';
             
             const tdMode = document.createElement('td');
-            tdMode.innerHTML = `<span>${modeName}</span><br><span class="mobile-only text-muted" style="font-size:0.85em; white-space:nowrap;">${getRelativeTime(m.gameCreation)}</span>`;
+            tdMode.innerHTML = `<span>${escapeHTML(modeName)}</span><br><span class="mobile-only text-muted" style="font-size:0.85em; white-space:nowrap;">${getRelativeTime(m.gameCreation)}</span>`;
             tr.appendChild(tdMode);
 
             // Date (Desktop only)
