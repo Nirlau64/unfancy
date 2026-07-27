@@ -166,21 +166,34 @@ export function setupSplashHover(container, itemSelector, bgSelector) {
  */
 export function getRelativeTime(date) {
     if (!date) return 'Unbekannt';
-    const timeMs = typeof date === 'number' ? date : (date instanceof Date ? date.getTime() : new Date(date).getTime());
-    if (isNaN(timeMs)) return 'Unbekannt';
-    const deltaSeconds = Math.round((Date.now() - timeMs) / 1000);
-    const cutoffs = [60, 3600, 86400, 86400 * 7, 86400 * 30, 86400 * 365, Infinity];
-    const units = ['Sekunde', 'Minute', 'Stunde', 'Tag', 'Woche', 'Monat', 'Jahr'];
-    const unitsPlural = ['Sekunden', 'Minuten', 'Stunden', 'Tagen', 'Wochen', 'Monaten', 'Jahren'];
-    
-    let unitIndex = cutoffs.findIndex(cutoff => cutoff > Math.abs(deltaSeconds));
-    let divisor = unitIndex ? cutoffs[unitIndex - 1] : 1;
-    let rtfValue = Math.floor(Math.abs(deltaSeconds) / divisor);
-    
-    if (deltaSeconds === 0) return 'gerade eben';
-    
-    const unitName = rtfValue === 1 ? units[unitIndex] : unitsPlural[unitIndex];
-    return deltaSeconds > 0 ? `vor ${rtfValue} ${unitName}` : `in ${rtfValue} ${unitName}`;
+    try {
+        let timeMs;
+        if (typeof date === 'number') {
+            timeMs = date;
+        } else if (date instanceof Date) {
+            timeMs = date.getTime();
+        } else {
+            // String (ISO 8601 o.ä.) oder anderer konstruierbarer Wert
+            timeMs = new Date(date).getTime();
+        }
+        if (isNaN(timeMs)) return 'Unbekannt';
+        const deltaSeconds = Math.round((Date.now() - timeMs) / 1000);
+        const cutoffs = [60, 3600, 86400, 86400 * 7, 86400 * 30, 86400 * 365, Infinity];
+        const units = ['Sekunde', 'Minute', 'Stunde', 'Tag', 'Woche', 'Monat', 'Jahr'];
+        const unitsPlural = ['Sekunden', 'Minuten', 'Stunden', 'Tagen', 'Wochen', 'Monaten', 'Jahren'];
+        
+        let unitIndex = cutoffs.findIndex(cutoff => cutoff > Math.abs(deltaSeconds));
+        let divisor = unitIndex ? cutoffs[unitIndex - 1] : 1;
+        let rtfValue = Math.floor(Math.abs(deltaSeconds) / divisor);
+        
+        if (deltaSeconds === 0) return 'gerade eben';
+        
+        const unitName = rtfValue === 1 ? units[unitIndex] : unitsPlural[unitIndex];
+        return deltaSeconds > 0 ? `vor ${rtfValue} ${unitName}` : `in ${rtfValue} ${unitName}`;
+    } catch (e) {
+        console.warn('getRelativeTime: invalid date value', date, e);
+        return 'Unbekannt';
+    }
 }
 
 /**
