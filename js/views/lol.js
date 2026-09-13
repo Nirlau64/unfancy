@@ -1,7 +1,7 @@
 /**
  * View Controller: League of Legends
  */
-import { fetchAPI } from '../api.js';
+import { fetchAPI } from '../api.js?v=riot-timeout-30s';
 import { CONFIG, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton, escapeHTML } from '../utils.js';
 
 export async function initLoL(signal = null) {
