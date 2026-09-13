@@ -1,7 +1,7 @@
 /**
  * View Controller: Spotify
  */
-import { fetchAPI } from '../api.js';
+import { APIError, fetchAPI } from '../api.js';
 import { CONFIG, getDominantColor, updateAccentColor, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
 
 let spotifyAbortController = null;
@@ -59,7 +59,14 @@ async function loadSpotifyData(range, signal = null) {
     } catch(e) {
         if (e.name === 'AbortError') return;
         console.error("Spotify loading error", e);
-        renderError(artistsDiv, "Spotify-Daten konnten nicht geladen werden.", () => loadSpotifyData(range, signal));
+        const message = e instanceof APIError && e.status === 502
+            ? "Spotify-Verbindung abgelaufen. Der Spotify-Refresh-Token muss einmalig neu autorisiert werden."
+            : "Spotify-Daten konnten nicht geladen werden.";
+        renderError(artistsDiv, message, () => {
+            if (spotifyAbortController) spotifyAbortController.abort();
+            spotifyAbortController = new AbortController();
+            loadSpotifyData(range, spotifyAbortController.signal);
+        });
     }
 }
 
