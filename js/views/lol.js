@@ -28,7 +28,7 @@ export async function initLoL(signal = null) {
 
         const [champRes, data] = await Promise.all([
             fetch(`https://ddragon.leagueoflegends.com/cdn/${patch}/data/en_US/champion.json`, { signal: AbortSignal.any([AbortSignal.timeout(15000), signal].filter(Boolean)) }).then(r => r.json()),
-            fetchAPI(CONFIG.API.LOL, false, signal)
+            fetchAPI(CONFIG.API.LOL, false, signal, 30000)
         ]);
 
         if (signal?.aborted) return;

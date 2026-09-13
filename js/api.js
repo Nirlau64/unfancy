@@ -14,14 +14,14 @@ export class APIError extends Error {
 /**
  * Fetches data from an API with optional cache busting and AbortSignal support.
  */
-export async function fetchAPI(url, useCacheBusting = false, signal = null) {
+export async function fetchAPI(url, useCacheBusting = false, signal = null, timeoutMs = 10000) {
     try {
         let finalUrl = url;
         if (useCacheBusting) {
             const sep = url.includes('?') ? '&' : '?';
             finalUrl = `${url}${sep}t=${Date.now()}`;
         }
-        const res = await fetch(finalUrl, { signal: AbortSignal.any([AbortSignal.timeout(10000), signal].filter(Boolean)) });
+        const res = await fetch(finalUrl, { signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), signal].filter(Boolean)) });
         const payload = await res.json().catch(() => null);
         if (!res.ok) {
             const message = payload?.error || `HTTP ${res.status}`;
