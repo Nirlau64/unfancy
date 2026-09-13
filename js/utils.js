@@ -7,7 +7,7 @@ export const CONFIG = {
     API: {
         SPOTIFY: "https://spotify.api.nirlau.de",
         STEAM: "https://steam.api.nirlau.de",
-        LOL: "https://api.nirlau.de/lol/Nirlau61/EUW/euw",
+        LOL: "https://api.nirlau.de/lol/Nirlau/Lauri/euw",
         YT_RSS: "https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fwww.youtube.com%2Ffeeds%2Fvideos.xml%3Fchannel_id%3DUCmr2wtpiZuDvwpShCNF9tng"
     },
     STEAM_BLOCKLIST: new Set([629520, 744190, 431960, 250820, 228980, 480]),
