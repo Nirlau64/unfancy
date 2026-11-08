@@ -1,4 +1,4 @@
-const CACHE_NAME = 'unfancy-v1';
+const CACHE_NAME = 'unfancy-v2';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -7,6 +7,7 @@ const STATIC_ASSETS = [
     '/js/router.js',
     '/js/api.js',
     '/js/utils.js',
+    '/js/lol-data.mjs',
     '/js/views/home.js',
     '/js/views/steam.js',
     '/js/views/spotify.js',
@@ -24,7 +25,9 @@ const STATIC_ASSETS = [
 
 self.addEventListener('install', (e) => {
     e.waitUntil(
-        caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+        caches.open(CACHE_NAME).then(cache =>
+            cache.addAll(STATIC_ASSETS.map(asset => new Request(asset, { cache: 'reload' })))
+        )
     );
     self.skipWaiting();
 });
@@ -43,8 +46,17 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
 
-    // API requests -> Network First (fallback to cache)
-    if (url.hostname.includes('api.nirlau.de') || url.hostname.includes('riotgames.com')) {
+    // Riot stats and metadata must not be persisted; always bypass HTTP and CacheStorage caches.
+    const isRiotResource = (url.hostname === 'api.nirlau.de' && url.pathname.startsWith('/lol/'))
+        || url.hostname === 'riotgames.com'
+        || url.hostname.endsWith('.riotgames.com');
+    if (isRiotResource) {
+        e.respondWith(fetch(new Request(e.request, { cache: 'no-store' })));
+        return;
+    }
+
+    // Other API requests -> Network First (fallback to cache)
+    if (url.hostname.includes('api.nirlau.de')) {
         e.respondWith(
             fetch(e.request)
                 .then(response => {

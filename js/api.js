@@ -12,16 +12,19 @@ export class APIError extends Error {
 }
 
 /**
- * Fetches data from an API with optional cache busting and AbortSignal support.
+ * Fetches data from an API with optional cache busting, cache mode, and AbortSignal support.
  */
-export async function fetchAPI(url, useCacheBusting = false, signal = null, timeoutMs = 10000) {
+export async function fetchAPI(url, useCacheBusting = false, signal = null, timeoutMs = 10000, cacheMode = 'default') {
     try {
         let finalUrl = url;
         if (useCacheBusting) {
             const sep = url.includes('?') ? '&' : '?';
             finalUrl = `${url}${sep}t=${Date.now()}`;
         }
-        const res = await fetch(finalUrl, { signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), signal].filter(Boolean)) });
+        const res = await fetch(finalUrl, {
+            signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), signal].filter(Boolean)),
+            cache: cacheMode
+        });
         const payload = await res.json().catch(() => null);
         if (!res.ok) {
             const message = payload?.error || `HTTP ${res.status}`;

@@ -1,7 +1,8 @@
 /**
  * View Controller: League of Legends
  */
-import { fetchAPI } from '../api.js?v=riot-timeout-30s';
+import { loadLoLResources, formatLoLLoadError, formatLoLMetadataWarning } from '../lol-data.mjs';
+import { fetchAPI } from '../api.js?v=riot-timeout-30s-no-store-v2';
 import { CONFIG, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton, escapeHTML } from '../utils.js';
 
 export async function initLoL(signal = null) {
@@ -15,41 +16,29 @@ export async function initLoL(signal = null) {
     const fetchTime = Date.now();
 
     try {
-        const [versions, queues] = await Promise.all([
-            fetch('https://ddragon.leagueoflegends.com/api/versions.json', { signal: AbortSignal.any([AbortSignal.timeout(10000), signal].filter(Boolean)) }).then(r => r.json()),
-            fetch('https://static.developer.riotgames.com/docs/lol/queues.json', { signal: AbortSignal.any([AbortSignal.timeout(10000), signal].filter(Boolean)) }).then(r => r.json())
-        ]);
-        
-        if (signal?.aborted) return;
-
-        const patch = versions[0];
-        const queueMap = {};
-        queues.forEach(q => queueMap[q.queueId] = q.description || `Queue ${q.queueId}`);
-
-        const [champRes, data] = await Promise.all([
-            fetch(`https://ddragon.leagueoflegends.com/cdn/${patch}/data/en_US/champion.json`, { signal: AbortSignal.any([AbortSignal.timeout(15000), signal].filter(Boolean)) }).then(r => r.json()),
-            fetchAPI(CONFIG.API.LOL, false, signal, 30000)
-        ]);
+        const { data, champMap, queueMap, warnings } = await loadLoLResources({
+            fetchAPI,
+            apiUrl: CONFIG.API.LOL,
+            signal
+        });
 
         if (signal?.aborted) return;
-
-        const champMap = {};
-        for (const cName in champRes.data) {
-            const c = champRes.data[cName];
-            champMap[c.key] = { 
-                name: c.name, 
-                img: `https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${c.id}.png`,
-                id: c.id
-            };
-        }
 
         renderLoLProfile(profileContainer, data);
         renderLoLStats(statsContainer, data, champMap, queueMap, fetchTime);
 
+        const warningMessage = formatLoLMetadataWarning(warnings);
+        if (warningMessage) {
+            const warning = document.createElement('p');
+            warning.className = 'text-muted lol-data-warning';
+            warning.setAttribute('role', 'status');
+            warning.textContent = warningMessage;
+            profileContainer.appendChild(warning);
+        }
     } catch (e) {
-        if (e.name === 'AbortError') return;
-        console.error("LoL initialization error", e);
-        renderError(statsContainer, "LoL-Daten konnten nicht geladen werden.", () => initLoL(signal));
+        if (e.name === 'AbortError' || signal?.aborted) return;
+        console.error('LoL initialization error', e);
+        renderError(statsContainer, formatLoLLoadError(e), () => initLoL(signal));
     }
 }
 
@@ -107,11 +96,11 @@ function renderLoLStats(container, data, champMap, queueMap, fetchTime) {
                 img.src = cd.img;
                 img.alt = cd.name;
                 li.appendChild(img);
-
-                const nameDiv = document.createElement('div');
-                nameDiv.textContent = cd.name;
-                li.appendChild(nameDiv);
             }
+
+            const nameDiv = document.createElement('div');
+            nameDiv.textContent = cd?.name || `Champion ${c.championId}`;
+            li.appendChild(nameDiv);
 
             const pointsDiv = document.createElement('div');
             pointsDiv.className = 'text-muted';

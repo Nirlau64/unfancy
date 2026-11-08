@@ -122,7 +122,7 @@ export async function updateHomeStatus(signal = null) {
     if (!lolFetchAttempted && lolEl) {
         lolFetchAttempted = true;
         try {
-            const lolData = await fetchAPI(CONFIG.API.LOL, true, signal);
+            const lolData = await fetchAPI(CONFIG.API.LOL, false, signal, 10000, 'no-store');
             if (signal?.aborted) return;
             
             if (lolData && lolData.recentMatches && lolData.recentMatches.length > 0) {
