@@ -68,7 +68,7 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
         }
 
         // Update Nav Links
-        document.querySelectorAll('.nav-link').forEach(link => {
+        document.querySelectorAll('.nav-tabs .nav-link').forEach(link => {
             link.classList.toggle('active', link.dataset.page === pageName);
         });
 
@@ -145,7 +145,7 @@ export function setupSwipeNavigation(loadPageFn) {
         // Don't navigate if the user is scrolling a horizontally-scrollable element
         if (e.target.closest('.lol-table-wrap')) return;
 
-        const navLinks = Array.from(document.querySelectorAll('.nav-link'));
+        const navLinks = Array.from(document.querySelectorAll('.nav-tabs .nav-link'));
         const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
         if (currentIndex === -1) return;
 

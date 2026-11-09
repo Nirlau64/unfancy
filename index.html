@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net www.instagram.com connect.facebook.net platform.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com cdn.jsdelivr.net;">
-    <meta name="theme-color" content="#3b82f6">
+    <meta name="theme-color" content="#0b0e0f">
     <meta name="description" content="Persönliches Dashboard von Laurin — Gaming-Statistiken, Spotify & mehr.">
     <meta property="og:title" content="Unfancy Dashboard">
     <meta property="og:description" content="Gaming, Musik & Social Media Hub von Laurin">
@@ -32,9 +32,12 @@
 <body>
 
     <div class="main-card">
-        <header>
-            <h1><span class="text-accent">Unfancy</span> Dashboard</h1>
-            <p class="text-muted">Willkommen im zentralen Hub</p>
+        <header class="site-header">
+            <h1>
+                <span class="brand-mark" aria-hidden="true">U</span>
+                <span class="brand-wordmark">Unfancy<small>Personal Dashboard</small></span>
+            </h1>
+            <p class="header-note">Gaming · Musik · Socials</p>
         </header>
 
         <!-- Navigation -->
@@ -49,16 +52,39 @@
         <!-- Dieser Container wird ausgetauscht -->
         <main id="app-content">
             <div id="home" class="tab-content active">
-                <div class="section text-center">
-                    <h2>Willkommen 👋</h2>
-                    <p>Hi, ich bin Laurin. Auf diesem Dashboard bündle ich meine aktuellen Gaming-Statistiken, meinen Musikgeschmack und meine Social-Media-Kanäle.</p>
-                    <p class="text-muted" style="margin-top: 15px;">Klick dich einfach durch die Tabs oben, um mehr zu sehen.</p>
-                </div>
+                <section class="section home-hero section-relative" aria-labelledby="home-title">
+                    <div class="hero-copy">
+                        <p class="eyebrow">Nirlau.de &nbsp; / &nbsp; Persönlicher Hub</p>
+                        <h2 id="home-title">Hi, ich bin<br><span>Laurin.</span></h2>
+                        <p>Gaming, Musik und ein paar Dinge aus dem Netz — die Sachen, die mich gerade beschäftigen, an einem Ort.</p>
+                        <div class="hero-actions">
+                            <a class="nav-link hero-cta" href="/?page=spotify" data-page="spotify">Musik entdecken <span aria-hidden="true">↗</span></a>
+                            <span class="hero-caption">Ein Blick in meine digitale Ecke.</span>
+                        </div>
+                    </div>
+                    <div class="hero-art" aria-hidden="true">
+                        <div class="hero-orbit"><span class="hero-monogram">N.</span><span class="orbit-label">Personal / 01</span></div>
+                    </div>
+                </section>
+
+                <section class="home-collection" aria-labelledby="collection-title">
+                    <div class="section-heading">
+                        <div><p class="section-kicker">04 / Sammlungen</p><h2 id="collection-title">Meine Bereiche</h2></div>
+                        <span class="text-muted">Direkt reinspringen ↘</span>
+                    </div>
+                    <div class="explore-grid">
+                        <a class="nav-link explore-card" href="/?page=steam" data-page="steam"><span class="explore-number">01 / GAMES</span><span class="explore-title">Steam</span><span class="explore-description">Spiele, Spielzeit und Erfolge</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
+                        <a class="nav-link explore-card" href="/?page=spotify" data-page="spotify"><span class="explore-number">02 / AUDIO</span><span class="explore-title">Spotify</span><span class="explore-description">Artists, Tracks und was gerade läuft</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
+                        <a class="nav-link explore-card" href="/?page=lol" data-page="lol"><span class="explore-number">03 / RIFT</span><span class="explore-title">League of Legends</span><span class="explore-description">Ranked, Champions und letzte Matches</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
+                        <a class="nav-link explore-card" href="/?page=socials" data-page="socials"><span class="explore-number">04 / ONLINE</span><span class="explore-title">Socials</span><span class="explore-description">YouTube, Instagram und mehr</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
+                    </div>
+                </section>
 
                 <div class="section" id="live-status-section" style="display: none;">
-                    <h2>🔴 Live Status</h2>
+                    <div class="section-heading"><div><p class="section-kicker">Live / Now</p><h2>Gerade aktiv</h2></div><span class="status-dot" aria-hidden="true"></span></div>
                     <div id="home-spotify-status" class="text-center" aria-live="polite"></div>
                     <div id="home-steam-status" class="text-center" aria-live="polite"></div>
+                    <div id="home-lol-status" class="text-center" aria-live="polite"></div>
                 </div>
             </div>
         </main>

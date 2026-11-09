@@ -58,7 +58,7 @@ document.addEventListener('click', (e) => {
 // Global keyboard listener for tab navigation (Arrow Keys)
 document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        const navLinks = Array.from(document.querySelectorAll('.nav-link'));
+        const navLinks = Array.from(document.querySelectorAll('.nav-tabs .nav-link'));
         const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
         if (currentIndex === -1) return;
 

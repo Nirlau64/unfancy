@@ -4,8 +4,8 @@
   "description": "Gaming, Musik & Social Media Hub von Laurin",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#181a20",
-  "theme_color": "#3b82f6",
+  "background_color": "#0b0e0f",
+  "theme_color": "#0b0e0f",
   "icons": [
     {
       "src": "/assets/favicon.png",
