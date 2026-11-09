@@ -13,12 +13,14 @@ export async function initHome(signal = null) {
 
 export async function updateHomeStatus(signal = null) {
     const liveSection = document.getElementById('live-status-section');
+    const recentSection = document.getElementById('recent-status-section');
     const spEl = document.getElementById('home-spotify-status');
     const stEl = document.getElementById('home-steam-status');
     const lolEl = document.getElementById('home-lol-status');
-    if (!liveSection || !spEl || !stEl) return;
+    if (!liveSection || !recentSection || !spEl || !stEl || !lolEl) return;
 
-    let hasActivity = false;
+    let hasLiveActivity = false;
+    let hasRecentActivity = false;
     
     // Spotify Status
     try {
@@ -44,7 +46,7 @@ export async function updateHomeStatus(signal = null) {
             itemDiv.className = 'live-status-item';
             
             const p = document.createElement('p');
-            p.textContent = '🎧 Laurin hört gerade:';
+            p.textContent = 'Spotify';
             itemDiv.appendChild(p);
 
             const trackBox = document.createElement('div');
@@ -77,7 +79,7 @@ export async function updateHomeStatus(signal = null) {
             itemDiv.appendChild(trackBox);
             spEl.appendChild(itemDiv);
             
-            hasActivity = true;
+            hasLiveActivity = true;
         } else {
             if (document.title.startsWith('🎧')) document.title = 'Unfancy - Dashboard';
             while (spEl.firstChild) spEl.removeChild(spEl.firstChild);
@@ -99,7 +101,7 @@ export async function updateHomeStatus(signal = null) {
             itemDiv.className = 'live-status-item';
             
             const p = document.createElement('p');
-            p.textContent = '🎮 Laurin spielt gerade:';
+            p.textContent = 'Steam';
             itemDiv.appendChild(p);
 
             const link = document.createElement('a');
@@ -112,7 +114,7 @@ export async function updateHomeStatus(signal = null) {
             itemDiv.appendChild(link);
             stEl.appendChild(itemDiv);
             
-            hasActivity = true;
+            hasLiveActivity = true;
         }
     } catch (e) {
         if (e.name !== 'AbortError') console.warn("Steam Live Status error", e);
@@ -137,7 +139,7 @@ export async function updateHomeStatus(signal = null) {
                     itemDiv.style.marginTop = '10px';
                     
                     const p = document.createElement('p');
-                    p.innerHTML = `🎮 Letztes LoL Match: <strong style="color:${res === 'Sieg' ? '#4ade80' : (res === 'Niederlage' ? '#f43f5e' : 'inherit')}">${escapeHTML(res)}</strong> als ${escapeHTML(champ)} (${escapeHTML(kda)})`;
+                    p.innerHTML = `LoL: <strong style="color:${res === 'Sieg' ? '#4ade80' : (res === 'Niederlage' ? '#f43f5e' : 'inherit')}">${escapeHTML(res)}</strong> als ${escapeHTML(champ)} (${escapeHTML(kda)})`;
                     itemDiv.appendChild(p);
                     
                     cachedLoLStatus = itemDiv;
@@ -151,8 +153,9 @@ export async function updateHomeStatus(signal = null) {
     if (lolEl && cachedLoLStatus) {
         while (lolEl.firstChild) lolEl.removeChild(lolEl.firstChild);
         lolEl.appendChild(cachedLoLStatus.cloneNode(true));
-        hasActivity = true;
+        hasRecentActivity = true;
     }
 
-    liveSection.style.display = hasActivity ? 'block' : 'none';
+    liveSection.style.display = hasLiveActivity ? 'block' : 'none';
+    recentSection.style.display = hasRecentActivity ? 'block' : 'none';
 }

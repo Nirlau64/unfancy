@@ -1,36 +1,22 @@
 <div id="home" class="tab-content active">
-    <section class="section home-hero section-relative" aria-labelledby="home-title">
-        <div class="hero-copy">
-            <p class="eyebrow">Nirlau.de &nbsp; / &nbsp; Persönlicher Hub</p>
-            <h2 id="home-title">Hi, ich bin<br><span>Laurin.</span></h2>
-            <p>Gaming, Musik und ein paar Dinge aus dem Netz — die Sachen, die mich gerade beschäftigen, an einem Ort.</p>
-            <div class="hero-actions">
-                <a class="nav-link hero-cta" href="/?page=spotify" data-page="spotify">Musik entdecken <span aria-hidden="true">↗</span></a>
-                <span class="hero-caption">Ein Blick in meine digitale Ecke.</span>
-            </div>
-        </div>
-        <div class="hero-art" aria-hidden="true">
-            <div class="hero-orbit"><span class="hero-monogram">N.</span><span class="orbit-label">Personal / 01</span></div>
-        </div>
-    </section>
-
-    <section class="home-collection" aria-labelledby="collection-title">
-        <div class="section-heading">
-            <div><p class="section-kicker">04 / Sammlungen</p><h2 id="collection-title">Meine Bereiche</h2></div>
-            <span class="text-muted">Direkt reinspringen ↘</span>
-        </div>
+    <section class="home-overview" aria-labelledby="home-title">
+        <h2 id="home-title">Bereiche</h2>
         <div class="explore-grid">
-            <a class="nav-link explore-card" href="/?page=steam" data-page="steam"><span class="explore-number">01 / GAMES</span><span class="explore-title">Steam</span><span class="explore-description">Spiele, Spielzeit und Erfolge</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
-            <a class="nav-link explore-card" href="/?page=spotify" data-page="spotify"><span class="explore-number">02 / AUDIO</span><span class="explore-title">Spotify</span><span class="explore-description">Artists, Tracks und was gerade läuft</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
-            <a class="nav-link explore-card" href="/?page=lol" data-page="lol"><span class="explore-number">03 / RIFT</span><span class="explore-title">League of Legends</span><span class="explore-description">Ranked, Champions und letzte Matches</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
-            <a class="nav-link explore-card" href="/?page=socials" data-page="socials"><span class="explore-number">04 / ONLINE</span><span class="explore-title">Socials</span><span class="explore-description">YouTube, Instagram und mehr</span><span class="explore-arrow" aria-hidden="true">↗</span></a>
+            <a class="nav-link explore-card" href="/?page=steam" data-page="steam"><span class="explore-title">Steam</span></a>
+            <a class="nav-link explore-card" href="/?page=spotify" data-page="spotify"><span class="explore-title">Spotify</span></a>
+            <a class="nav-link explore-card" href="/?page=lol" data-page="lol"><span class="explore-title">League of Legends</span></a>
+            <a class="nav-link explore-card" href="/?page=socials" data-page="socials"><span class="explore-title">Socials</span></a>
         </div>
     </section>
 
-    <div class="section" id="live-status-section" style="display: none;">
-        <div class="section-heading"><div><p class="section-kicker">Live / Now</p><h2>Gerade aktiv</h2></div><span class="status-dot" aria-hidden="true"></span></div>
-        <div id="home-spotify-status" class="text-center" aria-live="polite"></div>
-        <div id="home-steam-status" class="text-center" aria-live="polite"></div>
-        <div id="home-lol-status" class="text-center" aria-live="polite"></div>
-    </div>
+    <section class="section home-status" id="live-status-section" style="display: none;" aria-labelledby="live-status-title">
+        <h2 id="live-status-title">Gerade aktiv</h2>
+        <div id="home-spotify-status" aria-live="polite"></div>
+        <div id="home-steam-status" aria-live="polite"></div>
+    </section>
+
+    <section class="section home-status" id="recent-status-section" style="display: none;" aria-labelledby="recent-status-title">
+        <h2 id="recent-status-title">Zuletzt gespielt</h2>
+        <div id="home-lol-status" aria-live="polite"></div>
+    </section>
 </div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'unfancy-v3';
+const CACHE_NAME = 'unfancy-v4';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
