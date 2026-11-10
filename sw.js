@@ -1,4 +1,4 @@
-const CACHE_NAME = 'unfancy-v4';
+const CACHE_NAME = 'unfancy-v5';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -14,11 +14,7 @@ const STATIC_ASSETS = [
     '/js/views/spotify.js',
     '/js/views/lol.js',
     '/js/views/socials.js',
-    '/pages/home.html',
-    '/pages/steam.html',
-    '/pages/spotify.html',
-    '/pages/lol.html',
-    '/pages/socials.html',
+    // Page fragments are warmed after the first render instead of during install.
     '/404.html',
     '/assets/favicon.png',
     'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap'
@@ -74,10 +70,12 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
         caches.match(e.request).then(cached => {
             return cached || fetch(e.request).then(response => {
-                // Optionally cache new static requests dynamically
-                if (e.request.method === 'GET' && url.origin === location.origin) {
-                    const resClone = response.clone();
-                    caches.open(CACHE_NAME).then(cache => cache.put(e.request, resClone));
+                // Persist same-origin GETs, including idle-prefetched page fragments.
+                if (response.ok && e.request.method === 'GET' && url.origin === location.origin) {
+                    return caches.open(CACHE_NAME)
+                        .then(cache => cache.put(e.request, response.clone()))
+                        .then(() => response)
+                        .catch(() => response);
                 }
                 return response;
             });

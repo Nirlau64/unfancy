@@ -16,7 +16,37 @@ const PAGE_MAP = {
 };
 
 const pageCache = new Map();
+const pageFetches = new Map();
 let currentAbortController = null;
+
+// A shared fragment fetch may finish after navigation changes, warming the cache for reuse.
+function getPageHTML(pageName) {
+    if (pageCache.has(pageName)) {
+        return Promise.resolve(pageCache.get(pageName));
+    }
+
+    if (pageFetches.has(pageName)) {
+        return pageFetches.get(pageName);
+    }
+
+    const request = fetch(PAGE_MAP[pageName])
+        .then(response => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.text();
+        })
+        .then(html => {
+            pageCache.set(pageName, html);
+            return html;
+        })
+        .finally(() => {
+            if (pageFetches.get(pageName) === request) {
+                pageFetches.delete(pageName);
+            }
+        });
+
+    pageFetches.set(pageName, request);
+    return request;
+}
 
 /**
  * Loads a page by name, fetches its fragment, handles caching, transitions and A11y focus.
@@ -39,22 +69,14 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
     contentDiv.classList.add('fade-out');
 
     try {
-        let newContentHTML;
-
-        // Check Cache
-        if (pageCache.has(pageName)) {
-            newContentHTML = pageCache.get(pageName);
-        } else {
-            const response = await fetch(PAGE_MAP[pageName], { signal });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            newContentHTML = await response.text();
-
-            // Store in cache
-            pageCache.set(pageName, newContentHTML);
-        }
-
-        // Wait for fade-out animation
-        await new Promise(r => setTimeout(r, 300));
+        const pageWasCached = pageCache.has(pageName);
+        const prefersReducedMotion = window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const contentPromise = getPageHTML(pageName);
+        const transitionPromise = pageWasCached || prefersReducedMotion
+            ? Promise.resolve()
+            : new Promise(resolve => setTimeout(resolve, 180));
+        const [newContentHTML] = await Promise.all([contentPromise, transitionPromise]);
 
         // Final check before DOM update
         if (signal.aborted) return;
@@ -103,6 +125,14 @@ export function preCachePage(pageName, html) {
     if (!pageCache.has(pageName)) {
         pageCache.set(pageName, html);
     }
+}
+
+/**
+ * Warms uncached page fragments after the initial render without fetching API data.
+ */
+export async function preloadPageFragments() {
+    const uncachedPages = Object.keys(PAGE_MAP).filter(pageName => !pageCache.has(pageName));
+    await Promise.allSettled(uncachedPages.map(pageName => getPageHTML(pageName)));
 }
 
 /**

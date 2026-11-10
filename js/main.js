@@ -2,7 +2,14 @@
  * Unfancy Dashboard - Main Entry Point (ES6 Module)
  */
 
-import { loadPage, setupPopstate, setupSwipeNavigation, preCachePage, getPageFromURL } from './router.js';
+import {
+    loadPage,
+    setupPopstate,
+    setupSwipeNavigation,
+    preCachePage,
+    preloadPageFragments,
+    getPageFromURL
+} from './router.js';
 import { initHome, updateHomeStatus } from './views/home.js';
 import { initSteam, cleanupSteam } from './views/steam.js';
 import { initSpotify } from './views/spotify.js';
@@ -43,6 +50,49 @@ function triggerPageLogic(pageName, signal = null) {
             break;
         default:
             console.warn(`No logic defined for page: ${pageName}`);
+    }
+}
+
+function waitForServiceWorkerControl() {
+    if (!('serviceWorker' in navigator) || navigator.serviceWorker.controller) {
+        return Promise.resolve();
+    }
+
+    // On the first visit, let the new worker claim this page before warming its cache.
+    const serviceWorker = navigator.serviceWorker;
+    return new Promise(resolve => {
+        let timeoutId;
+        const finish = () => {
+            window.clearTimeout(timeoutId);
+            serviceWorker.removeEventListener('controllerchange', finish);
+            resolve();
+        };
+        serviceWorker.addEventListener('controllerchange', finish, { once: true });
+        timeoutId = window.setTimeout(finish, 1500);
+        if (serviceWorker.controller) finish();
+    });
+}
+
+function schedulePagePrefetch() {
+    const connection = navigator.connection;
+    if (connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType)) return;
+
+    const runWhenIdle = () => {
+        const preload = async () => {
+            await waitForServiceWorkerControl();
+            void preloadPageFragments();
+        };
+        if (window.requestIdleCallback) {
+            window.requestIdleCallback(preload, { timeout: 2000 });
+        } else {
+            window.setTimeout(preload, 1000);
+        }
+    };
+
+    if (document.readyState === 'complete') {
+        runWhenIdle();
+    } else {
+        window.addEventListener('load', runWhenIdle, { once: true });
     }
 }
 
@@ -105,10 +155,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (requestedPage !== 'home') {
         // User arrived via redirect stub (e.g. ?page=steam) — load that page
-        loadPage(requestedPage, false, triggerPageLogic);
+        loadPage(requestedPage, false, triggerPageLogic).finally(schedulePagePrefetch);
     } else {
         // Home content is already inline — just trigger its JS logic
         triggerPageLogic('home');
+        schedulePagePrefetch();
     }
 
     // Live Status Auto-Refresh (Home only)
