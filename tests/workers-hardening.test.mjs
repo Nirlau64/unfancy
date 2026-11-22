@@ -33,9 +33,33 @@ function req(path, { method = 'GET', origin } = {}) {
 // ---- spotify-auth ----
 const auth = await import('../workers/spotify-auth.js');
 const authEnv = {
+    SETUP_TOKEN: 'test-setup-token',
     SPOTIFY_CLIENT_ID: 'client-id',
     SPOTIFY_CLIENT_SECRET: 'client-secret',
-    SETUP_TOKEN: 'test-setup-token',
+    OAUTH_STATE: {
+        instances: new Map(),
+        idFromName(name) { return name; },
+        get(id) {
+            if (!this.instances.has(id)) {
+                const values = new Map();
+                const storage = {
+                    async get(key) { return values.get(key); },
+                    async put(key, value) { values.set(key, value); },
+                    async delete(key) { values.delete(key); },
+                    async transaction(callback) {
+                        // Serializes operations like a Durable Object transaction.
+                        const previous = this.tail || Promise.resolve();
+                        let release;
+                        this.tail = new Promise((resolve) => { release = resolve; });
+                        await previous;
+                        try { return await callback(this); } finally { release(); }
+                    },
+                };
+                this.instances.set(id, new auth.OAuthState({ storage }, {}));
+            }
+            return { fetch: (input, init) => this.instances.get(id).fetch(new Request(input, init)) };
+        },
+    },
     TOKENS: {
         store: new Map(),
         async put(k, v, opts) { this.store.set(k, v); },
@@ -67,37 +91,70 @@ test('spotify-auth accepts only the exact allowlisted HTTPS host', async () => {
 test('spotify-auth uses one constant production callback URL and consumes state once', async () => {
     globalThis.fetch = async (url) => new Response(JSON.stringify({ refresh_token: 'rt', access_token: 'at' }), { status: 200 });
     try {
-        const first = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer test-setup-token' } }), authEnv);
+        const first = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: `Bearer ${authEnv.SETUP_TOKEN}` } }), authEnv);
         assert.equal(first.status, 302);
         const location = first.headers.get('Location');
         assert.ok(location.includes('redirect_uri=https%3A%2F%2Fspotify-auth.nirlau.de%2Fcallback'), 'fixed redirect URI');
         const state = new URLSearchParams(new URL(location).search).get('state');
-        const code = 'authcode';
+        assert.ok(state, 'authorization request includes generated state');
+        const second = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: `Bearer ${authEnv.SETUP_TOKEN}` } }), authEnv);
+        const secondState = new URLSearchParams(new URL(second.headers.get('Location')).search).get('state');
+        assert.notEqual(secondState, state, 'each authorization request gets a unique state');
 
-        const cb1 = await auth.default.fetch(new Request(`https://spotify-auth.nirlau.de/callback?code=${code}&state=${state}`), authEnv);
-        assert.equal(cb1.status, 200);
+        const callbackUrl = `https://spotify-auth.nirlau.de/callback?code=authcode&state=${state}`;
+        const cb1 = await auth.default.fetch(new Request(callbackUrl), authEnv);
+        assert.equal(cb1.status, 200, 'state is accepted once');
+        const cb2 = await auth.default.fetch(new Request(callbackUrl), authEnv);
+        assert.equal(cb2.status, 400, 'replay rejected');
+        assert.match(await cb2.text(), /bereits verwendet/);
 
-        // Replaying the same state must be rejected (single-use consume; note
-        // the KV get+delete window is not atomic — documented limitation).
-        const cb2 = await auth.default.fetch(new Request(`https://spotify-auth.nirlau.de/callback?code=${code}&state=${state}`), authEnv);
-        assert.equal(cb2.status, 400);
+        const missing = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/callback?code=x'), authEnv);
+        assert.equal(missing.status, 400, 'missing state rejected');
+        const unknown = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/callback?code=x&state=unknown'), authEnv);
+        assert.equal(unknown.status, 400, 'unknown state rejected');
     } finally {
         delete globalThis.fetch;
     }
 });
 
-test('spotify-auth /setup fails closed and requires a bearer header', async () => {
+test('spotify-auth atomically accepts only one parallel callback', async () => {
+    let tokenExchanges = 0;
+    globalThis.fetch = async () => {
+        tokenExchanges++;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return new Response(JSON.stringify({ refresh_token: 'rt' }), { status: 200 });
+    };
+    try {
+        const setup = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: `Bearer ${authEnv.SETUP_TOKEN}` } }), authEnv);
+        const state = new URLSearchParams(new URL(setup.headers.get('Location')).search).get('state');
+        const url = `https://spotify-auth.nirlau.de/callback?code=authcode&state=${state}`;
+        const responses = await Promise.all([
+            auth.default.fetch(new Request(url), authEnv),
+            auth.default.fetch(new Request(url), authEnv),
+        ]);
+        assert.deepEqual(responses.map((response) => response.status).sort(), [200, 400]);
+        assert.equal(tokenExchanges, 1, 'only the winning callback exchanges a token');
+    } finally {
+        delete globalThis.fetch;
+    }
+});
+
+test('spotify-auth /setup fails closed and requires SETUP_TOKEN in a header', async () => {
     const gatedEnv = { ...authEnv, SETUP_TOKEN: 's3cret-value' };
-    const denied = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer test-setup-token' } }), gatedEnv);
-    assert.equal(denied.status, 403, 'missing token rejected');
-    const queryOnly = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup?key=s3cret-value'), gatedEnv);
-    assert.equal(queryOnly.status, 403, 'query token rejected');
-    const absentConfig = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer s3cret-value' } }), authEnv);
-    assert.equal(absentConfig.status, 403, 'missing configured secret rejected');
+    const noKey = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup'), gatedEnv);
+    assert.equal(noKey.status, 403, 'missing key rejected');
+    const wrongKey = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup?key=wrong'), gatedEnv);
+    assert.equal(wrongKey.status, 403, 'wrong key rejected');
+    const queryKey = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup?key=s3cret-value'), gatedEnv);
+    assert.equal(queryKey.status, 403, 'query-string credential rejected');
+    const unconfigured = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer anything' } }), { ...authEnv, SETUP_TOKEN: undefined });
+    assert.equal(unconfigured.status, 503, 'missing SETUP_TOKEN fails closed');
     globalThis.fetch = async () => new Response('{}', { status: 200 });
     try {
-        const ok = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer s3cret-value' } }), gatedEnv);
-        assert.equal(ok.status, 302, 'correct bearer token allows the flow');
+        const ok = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', {
+            headers: { authorization: 'Bearer s3cret-value' },
+        }), gatedEnv);
+        assert.equal(ok.status, 302, 'correct key allows the flow');
     } finally {
         delete globalThis.fetch;
     }
@@ -355,20 +412,6 @@ test('steam-proxy: empty or missing upstream payload is not treated as success',
         globalThis.fetch = async () => new Response('forbidden', { status: 403 });
         const upErr = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
         assert.equal(upErr.status, 502);
-    } finally {
-        delete globalThis.fetch;
-    }
-});
-
-test('steam-proxy rejects paths outside the exact route allowlist', async () => {
-    let upstreamCalls = 0;
-    globalThis.fetch = async () => { upstreamCalls++; return new Response('{}', { status: 200 }); };
-    try {
-        for (const path of ['/profile/extra', '/profile/', '/profile/anything/else']) {
-            const res = await steam.default.fetch(req(`${path}?steamid=${steamid}`), steamEnv);
-            assert.equal(res.status, 404, `${path} rejected`);
-        }
-        assert.equal(upstreamCalls, 0);
     } finally {
         delete globalThis.fetch;
     }

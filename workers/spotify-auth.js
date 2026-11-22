@@ -1,4 +1,3 @@
-import { logInvocation } from './invocation-logging.js';
 const SPOTIFY_AUTHORIZE = 'https://accounts.spotify.com/authorize';
 const SPOTIFY_TOKEN = 'https://accounts.spotify.com/api/token';
 const SCOPES = 'user-read-currently-playing user-top-read';
@@ -49,19 +48,25 @@ async function codeChallenge(verifier) {
 async function setupPage(request, env) {
   if (request.method !== 'GET') return html('<p>Method not allowed.</p>', 405);
   if (!originAllowed(request)) return html('<h1>Spotify</h1><p>Nicht erlaubter Host.</p>', 403);
-  // Never allow OAuth setup to replace the shared refresh token without an
-  // explicit secret binding. Accept it only in a header: query strings leak
-  // into browser history, analytics, and request logs.
-  const configuredToken = typeof env.SETUP_TOKEN === 'string' ? env.SETUP_TOKEN : '';
-  const providedToken = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
-  if (!configuredToken || !providedToken || !timingSafeEqual(providedToken, configuredToken)) {
+  // Fail closed: do not expose an OAuth flow that can replace the stored token.
+  // Keep the credential out of URLs, where it would leak into logs and history.
+  if (!env.SETUP_TOKEN) return html('<h1>Spotify</h1><p>Setup nicht konfiguriert.</p>', 503);
+  const provided = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+  if (!timingSafeEqual(provided, env.SETUP_TOKEN)) {
     return html('<h1>Spotify</h1><p>Setup-Zugang verweigert.</p>', 403);
   }
 
   const verifier = randomVerifier();
   const challenge = await codeChallenge(verifier);
   const state = randomState();
-  await env.TOKENS.put(`oauth:state:${state}`, JSON.stringify({ verifier }), { expirationTtl: STATE_TTL_SECONDS });
+  if (!env.OAUTH_STATE) throw new Error('OAUTH_STATE Durable Object binding is required');
+  const stateObject = env.OAUTH_STATE.get(env.OAUTH_STATE.idFromName(state));
+  const stored = await stateObject.fetch('https://oauth-state.internal/state', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ verifier, expiresAt: Date.now() + STATE_TTL_SECONDS * 1000 }),
+  });
+  if (!stored.ok) throw new Error('Could not store OAuth state');
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -86,16 +91,12 @@ async function callback(request, env) {
   const code = url.searchParams.get('code');
   if (!state || !code) return html('<h1>Spotify</h1><p>OAuth-Antwort unvollständig.</p>', 400);
 
-  const stateKey = `oauth:state:${state}`;
-  const statePayload = await env.TOKENS.get(stateKey, 'json');
-  if (!statePayload?.verifier) return html('<h1>Spotify</h1><p>OAuth-Zustand ungültig oder abgelaufen.</p>', 400);
-  // Single-use consume: the state is deleted immediately after the read so a
-  // replayed callback no longer finds it. NOTE: KV get+delete is NOT atomic —
-  // a callback arriving in the small window between get and delete can still
-  // consume the same state twice. This is a documented, accepted limitation
-  // (see docs/cloudflare-write-plan.md, W2 "Known Limitation"); the window is
-  // tiny and the worst case is a duplicate token exchange, never a leak.
-  await env.TOKENS.delete(stateKey);
+  if (!env.OAUTH_STATE) throw new Error('OAUTH_STATE Durable Object binding is required');
+  const stateObject = env.OAUTH_STATE.get(env.OAUTH_STATE.idFromName(state));
+  const consumed = await stateObject.fetch('https://oauth-state.internal/state', { method: 'DELETE' });
+  if (consumed.status === 404) return html('<h1>Spotify</h1><p>OAuth-Zustand ungültig, abgelaufen oder bereits verwendet.</p>', 400);
+  if (!consumed.ok) return html('<h1>Spotify</h1><p>OAuth-Zustand konnte nicht geprüft werden.</p>', 503);
+  const statePayload = await consumed.json();
 
   const tokenResponse = await fetch(SPOTIFY_TOKEN, {
     method: 'POST',
@@ -137,11 +138,46 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
+export class OAuthState {
+  constructor(state, env) {
+    this.state = state;
+    this.storage = state.storage;
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname !== '/state') return new Response('Not found', { status: 404 });
+
+    if (request.method === 'PUT') {
+      const payload = await request.json();
+      if (typeof payload?.verifier !== 'string' || !payload.verifier || !Number.isFinite(payload.expiresAt)) {
+        return new Response('Invalid state payload', { status: 400 });
+      }
+      const stored = await this.storage.transaction(async (txn) => {
+        if (await txn.get('state')) return false;
+        await txn.put('state', payload);
+        return true;
+      });
+      return new Response(null, { status: stored ? 201 : 409 });
+    }
+
+    if (request.method === 'DELETE') {
+      const payload = await this.storage.transaction(async (txn) => {
+        const value = await txn.get('state');
+        if (!value) return null;
+        await txn.delete('state');
+        return value;
+      });
+      if (!payload || payload.expiresAt <= Date.now()) return new Response(null, { status: 404 });
+      return Response.json({ verifier: payload.verifier }, { headers: { 'cache-control': 'no-store' } });
+    }
+
+    return new Response('Method not allowed', { status: 405 });
+  }
+}
+
 export default {
   async fetch(request, env) {
-    return logInvocation(request, () => this._fetch(request, env));
-  },
-  async _fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === '/setup') return setupPage(request, env);
     if (url.pathname === '/callback' && request.method === 'GET') return callback(request, env);
