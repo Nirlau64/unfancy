@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
-"""Generate optimised icon assets from assets/favicon.png (one-off maintenance script)."""
+"""Generate the optimised icon set from the versioned source asset.
+
+Source of truth: ``assets/icon-source.png`` (512x512, committed to the repo).
+Every icon referenced by ``index.html``/``manifest.json`` is derived from that
+file, so regenerating on any machine with Pillow installed reproduces the
+committed PNGs deterministically (same Pillow version assumed).
+
+Usage:
+    pip install pillow  # once
+    python3 scripts/make-icons.py
+
+After changing the source or this script, regenerate, then commit the updated
+PNGs together with the script change (see README "Assets").
+"""
 from PIL import Image
 from pathlib import Path
 
-SRC = Path("assets/favicon.png")
+SRC = Path("assets/icon-source.png")
 OUT = Path("assets")
 
 # name -> (width, height, quantised colours)
@@ -18,12 +31,8 @@ img = Image.open(SRC)
 print("source:", img.size, img.mode)
 
 for name, (w, h, colors) in TARGETS.items():
-    # The source is not square; crop to the centre square before resizing.
-    side = min(img.size)
-    left = (img.width - side) // 2
-    top = (img.height - side) // 2
-    square = img.crop((left, top, left + side, top + side))
-    out = square.resize((w, h), Image.Resampling.LANCZOS)
+    # The source is square; resize directly to the target size.
+    out = img.resize((w, h), Image.Resampling.LANCZOS)
     # Preserve alpha while quantising (alpha dithering off keeps edges clean).
     out = out.quantize(colors=colors, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
     path = OUT / name

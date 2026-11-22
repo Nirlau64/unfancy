@@ -66,9 +66,28 @@ test('spotify-auth uses a fixed redirect URI and one-time state consume', async 
         const cb1 = await auth.default.fetch(new Request(`https://spotify-auth.nirlau.de/callback?code=${code}&state=${state}`), authEnv);
         assert.equal(cb1.status, 200);
 
-        // Replaying the same state must be rejected (exactly-once consume).
+        // Replaying the same state must be rejected (single-use consume; note
+        // the KV get+delete window is not atomic — documented limitation).
         const cb2 = await auth.default.fetch(new Request(`https://spotify-auth.nirlau.de/callback?code=${code}&state=${state}`), authEnv);
         assert.equal(cb2.status, 400);
+    } finally {
+        delete globalThis.fetch;
+    }
+});
+
+test('spotify-auth /setup honours an optional SETUP_TOKEN gate', async () => {
+    const gatedEnv = { ...authEnv, SETUP_TOKEN: 's3cret-value' };
+    const noKey = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup'), gatedEnv);
+    assert.equal(noKey.status, 403, 'missing key rejected');
+    const wrongKey = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup?key=wrong'), gatedEnv);
+    assert.equal(wrongKey.status, 403, 'wrong key rejected');
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    try {
+        const ok = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup?key=s3cret-value'), gatedEnv);
+        assert.equal(ok.status, 302, 'correct key allows the flow');
+        // Without SETUP_TOKEN configured the endpoint stays open (documented policy).
+        const open = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup'), authEnv);
+        assert.equal(open.status, 302);
     } finally {
         delete globalThis.fetch;
     }
@@ -309,6 +328,28 @@ test('steam-proxy: invalid steamid is rejected without an upstream call', async 
     }
 });
 
+test('steam-proxy: empty or missing upstream payload is not treated as success', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ response: { players: [] } }), { status: 200 });
+    try {
+        const empty = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        assert.equal(empty.status, 404, 'no player → 404, not an empty 200');
+        const body = await empty.json();
+        assert.equal(body.error, 'not_found');
+
+        // Missing response object (e.g. malformed/failed payload) → 502.
+        globalThis.fetch = async () => new Response('{}', { status: 200 });
+        const noResponse = await steam.default.fetch(req(`/owned?steamid=${steamid}`), steamEnv);
+        assert.equal(noResponse.status, 502);
+
+        // Upstream HTTP error → 502, never an empty 200.
+        globalThis.fetch = async () => new Response('forbidden', { status: 403 });
+        const upErr = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        assert.equal(upErr.status, 502);
+    } finally {
+        delete globalThis.fetch;
+    }
+});
+
 test('steam-proxy: only GET and OPTIONS are allowed, CORS is allowlisted', async () => {
     const post = await steam.default.fetch(req(`/owned?steamid=${steamid}`, { method: 'POST' }), steamEnv);
     assert.equal(post.status, 405);
@@ -418,9 +459,36 @@ test('riot-proxy: rate limit returns 429 after the configured burst', async () =
     try {
         let status = null;
         for (let i = 0; i < 31; i++) {
-            status = (await riot.default.fetch(rreq('/'), riotEnv)).status;
+            status = (await riot.default.fetch(rreq('/lol/Nirlau/Lauri/euw'), riotEnv)).status;
         }
         assert.equal(status, 429);
+    } finally {
+        delete globalThis.fetch;
+        globalThis.caches = makeCache();
+    }
+});
+
+test('rate limiter creates no buckets for invalid routes or inputs', async () => {
+    globalThis.caches = makeCache();
+    globalThis.fetch = async () => { throw new Error('must not be called'); };
+    try {
+        // Hammer invalid routes/inputs well past the limit…
+        for (let i = 0; i < 40; i++) {
+            const steamRes = await steam.default.fetch(req('/unknown?steamid=' + steamid), steamEnv);
+            assert.equal(steamRes.status, 404);
+            const steamBad = await steam.default.fetch(req('/profile?steamid=bad'), steamEnv);
+            assert.equal(steamBad.status, 400);
+            const riotRes = await riot.default.fetch(rreq('/nope'), riotEnv);
+            assert.equal(riotRes.status, 400);
+            const spotifyRes = await spotify.default.fetch(req('/nope'), spotifyEnv, ctx);
+            assert.equal(spotifyRes.status, 404);
+        }
+        // …a valid request afterwards must still be served (no bucket was created).
+        globalThis.fetch = async () => new Response('{}', { status: 200 });
+        const okSteam = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        assert.ok(okSteam.status !== 429, 'steam limiter untouched by invalid traffic');
+        const okSpotify = await spotify.default.fetch(req('/now-playing'), spotifyEnv, ctx);
+        assert.ok(okSpotify.status !== 429, 'spotify limiter untouched by invalid traffic');
     } finally {
         delete globalThis.fetch;
         globalThis.caches = makeCache();

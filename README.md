@@ -64,10 +64,13 @@ unfancy/
 │       ├── lol.js       # Summoner, Champions, Match-History
 │       └── socials.js   # YouTube Embed, Instagram Embed
 ├── assets/
+│   ├── icon-source.png  # Versionierte Master-Grafik (512×512) für alle Icons
 │   ├── favicon-64.png   # Kleines Favicon
 │   ├── icon-192.png     # PWA-Icon 192px
 │   ├── icon-512.png     # PWA-/OG-Icon 512px
 │   ├── apple-touch-icon.png
+│   ├── LICENSE.chartjs.txt       # MIT-Lizenz Chart.js
+│   ├── LICENSE.kurkle-color.txt  # MIT-Lizenz @kurkle/color (in chart.umd.js eingebettet)
 │   └── vendor/chart.umd.js  # Chart.js 4.4.7 (lokal gepinnt)
 ├── steam/               # Generierte statische Route → steam/index.html
 ├── spotify/             # Generierte statische Route
@@ -77,12 +80,19 @@ unfancy/
 ├── robots.txt           # Verweist auf die Sitemap
 └── scripts/
     ├── build-routes.mjs # Erzeugt die statischen Routen (node scripts/build-routes.mjs)
-    └── make-icons.py    # Erzeugt die optimierten Icons aus der Master-Grafik
+    └── make-icons.py    # Erzeugt die optimierten Icons aus assets/icon-source.png
 ```
 
 Die statischen Routen werden aus `index.html` + `pages/*.html` generiert. Nach
 Änderungen an der Shell oder Fragmenten: `node scripts/build-routes.mjs` ausführen
-und die generierten Seiten mitcommitten.
+und die generierten Seiten mitcommitten. Ein Drift-Check in
+`tests/static-routes.test.mjs` schlägt fehl, wenn die committeten Seiten nicht
+mehr zum Generator-Stand passen.
+
+Die Icons werden reproduzierbar aus der versionierten Quelle
+`assets/icon-source.png` erzeugt (`python3 scripts/make-icons.py`, benötigt
+Pillow). Nach Änderungen an Quelle oder Skript neu generieren und die PNGs
+mitcommitten — bei gleicher Pillow-Version sind die Ausgaben byte-identisch.
 
 ---
 

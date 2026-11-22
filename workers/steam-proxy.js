@@ -4,7 +4,15 @@ const ALLOWED_ORIGINS = ['https://nirlau.de', 'https://www.nirlau.de'];
 // SteamID64 is exactly 17 digits; anything else is rejected before any upstream call.
 const STEAMID_PATTERN = /^\d{17}$/;
 
-// Simple abuse guard: fixed window per client IP, backed by the Cache API.
+// Public route segments. Requests for anything else are answered 404 without
+// touching the rate limiter (no bucket creation for invalid routes).
+const ROUTES = new Set(["currently-playing", "owned", "rarest-achievements", "profile"]);
+
+// Best-effort abuse guard: fixed window per client IP, backed by the Cache
+// API. It is colo-local (per data centre), not globally consistent, and it
+// FAILS OPEN when the cache backend errors — a cost guard, never a security
+// boundary. Zone-level rate limiting rules would be required for global
+// enforcement (missing permission; see docs/cloudflare-write-plan.md).
 const RATE_LIMIT = 30; // requests
 const RATE_WINDOW_SECONDS = 60;
 
@@ -57,6 +65,9 @@ async function rateLimit(req) {
   }
 }
 
+// Returns the parsed JSON body, or null when the upstream call failed.
+// Callers MUST treat null as an upstream failure (502) — a missing/empty
+// payload is never reported as success.
 async function steamFetch(url) {
   const r = await fetch(url, { cf: { cacheTtl: 3600, cacheEverything: true } });
   if (!r.ok) return null;
@@ -72,6 +83,19 @@ async function handle(req, env) {
   if (req.method !== "GET") {
     return json({ error: "Method not allowed" }, 405, origin);
   }
+
+  const u = new URL(req.url);
+  const [seg] = u.pathname.split("/").filter(Boolean);
+  const steamid = u.searchParams.get("steamid");
+
+  // Validate route and input BEFORE the rate limiter: invalid requests are
+  // answered directly and must not create limiter buckets.
+  if (!STEAMID_PATTERN.test(steamid || "")) {
+    return json({ error: "Valid steamid (SteamID64) required" }, 400, origin);
+  }
+  if (!ROUTES.has(seg)) {
+    return json({ error: "Not found" }, 404, origin);
+  }
   if (!(await rateLimit(req))) {
     return json({ error: "Too many requests" }, 429, origin);
   }
@@ -79,24 +103,20 @@ async function handle(req, env) {
     return json({ error: "STEAM_API_KEY missing" }, 500, origin);
   }
 
-  const u = new URL(req.url);
-  const [seg] = u.pathname.split("/").filter(Boolean);
-  const steamid = u.searchParams.get("steamid");
-  if (!STEAMID_PATTERN.test(steamid || "")) {
-    return json({ error: "Valid steamid (SteamID64) required" }, 400, origin);
-  }
-
   try {
     if (seg === "currently-playing") {
       const data = await steamFetch(`${STEAM}/ISteamUser/GetPlayerSummaries/v2/?key=${env.STEAM_API_KEY}&steamids=${steamid}`);
-      const p = (data?.response?.players || [])[0] || {};
+      if (data?.response == null) return json({ error: "upstream_error" }, 502, origin);
+      const p = (data.response.players || [])[0];
+      if (!p) return json({ error: "not_found" }, 404, origin);
       return json({ game: p.gameextrainfo || null, appid: p.gameid || null }, 200, origin);
     }
 
     if (seg === "owned") {
       const data = await
       steamFetch(`${STEAM}/IPlayerService/GetOwnedGames/v1/?key=${env.STEAM_API_KEY}&steamid=${steamid}&include_appinfo=1&include_played_free_games=1`);
-      const games = (data?.response?.games || []).map((g) => ({
+      if (data?.response == null) return json({ error: "upstream_error" }, 502, origin);
+      const games = (data.response.games || []).map((g) => ({
         appid: g.appid,
         name: g.name,
         playtime_minutes: g.playtime_forever ?? 0,
@@ -107,7 +127,8 @@ async function handle(req, env) {
 
     if (seg === "rarest-achievements") {
       const ownedData = await steamFetch(`${STEAM}/IPlayerService/GetOwnedGames/v1/?key=${env.STEAM_API_KEY}&steamid=${steamid}&include_appinfo=1`);
-      const games = (ownedData?.response?.games || [])
+      if (ownedData?.response == null) return json({ error: "upstream_error" }, 502, origin);
+      const games = (ownedData.response.games || [])
         .sort((a, b) => b.playtime_forever - a.playtime_forever)
         .filter(g => g.playtime_forever > 0)
         .filter(g => g.appid !== 346110)
@@ -157,7 +178,9 @@ async function handle(req, env) {
 
     if (seg === "profile") {
       const data = await steamFetch(`${STEAM}/ISteamUser/GetPlayerSummaries/v2/?key=${env.STEAM_API_KEY}&steamids=${steamid}`);
-      const p = (data?.response?.players || [])[0] || {};
+      if (data?.response == null) return json({ error: "upstream_error" }, 502, origin);
+      const p = (data.response.players || [])[0];
+      if (!p) return json({ error: "not_found" }, 404, origin);
       return json({ steamid: p.steamid, persona: p.personaname, avatar: p.avatarfull, profileurl: p.profileurl }, 200, origin);
     }
 

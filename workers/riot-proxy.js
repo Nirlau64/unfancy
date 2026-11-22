@@ -10,7 +10,11 @@ const TAG_PATTERN = /^[\p{L}\p{N}]{1,8}$/u;
 
 const REGIONS = new Set(['euw', 'euw1', 'eun', 'eun1', 'na', 'na1', 'br', 'br1', 'la1', 'la2', 'oc', 'oc1', 'jp', 'jp1', 'kr', 'tr', 'tr1', 'ru']);
 
-// Simple abuse guard: fixed window per client IP, backed by the Cache API.
+// Best-effort abuse guard: fixed window per client IP, backed by the Cache
+// API. It is colo-local (per data centre), not globally consistent, and it
+// FAILS OPEN when the cache backend errors — a cost guard, never a security
+// boundary. Zone-level rate limiting rules would be required for global
+// enforcement (missing permission; see docs/cloudflare-write-plan.md).
 const RATE_LIMIT = 30; // requests
 const RATE_WINDOW_SECONDS = 60;
 
@@ -74,29 +78,29 @@ async function fetchCached(url, headers, ctx, okTTL = 120) {
 }
 
 async function fetchMasteries({ puuid, summonerId, platform, H, ctx }) {
-  let r = await fetchCached(`https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}`, H, ctx, 300);
+  let r = await fetchCached(`https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${encodeURIComponent(puuid)}`, H, ctx, 300);
   if (r.ok) return r.json();
   if (r.status === 404 || r.status === 403) {
-    r = await fetchCached(`https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-summoner/${summonerId}`, H, ctx, 300);
+    r = await fetchCached(`https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-summoner/${encodeURIComponent(summonerId)}`, H, ctx, 300);
     if (r.ok) return r.json();
   }
   return { error: "mastery", status: r.status, body: await safeText(r) };
 }
 
 async function fetchRecentMatches({ puuid, route, H, ctx, count = 10 }) {
-  const idsURL = `https://${route}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=${count}`;
+  const idsURL = `https://${route}.api.riotgames.com/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids?start=0&count=${count}`;
   const idsRes = await fetchCached(idsURL, H, ctx, 60);
   if (!idsRes.ok) return { error: "match-ids", status: idsRes.status, body: await safeText(idsRes) };
   const ids = await idsRes.json();
   let accountCreatedAt = null;
-  const accRes = await fetchCached(`https://${route}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${puuid}`, H, ctx, 300);
+  const accRes = await fetchCached(`https://${route}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${encodeURIComponent(puuid)}`, H, ctx, 300);
   if (accRes.ok) {
     const acc = await accRes.json();
     accountCreatedAt = acc.createdAt || acc.createdAtMillis ? new Date(acc.createdAt || acc.createdAtMillis).toISOString() : null;
   }
   const limited = ids.slice(0, count);
   const matches = await Promise.all(limited.map(async (id) => {
-    const mRes = await fetchCached(`https://${route}.api.riotgames.com/lol/match/v5/matches/${id}`, H, ctx, 120);
+    const mRes = await fetchCached(`https://${route}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`, H, ctx, 120);
     if (!mRes.ok) return { matchId: id, error: { status: mRes.status } };
     const m = await mRes.json();
     const info = m.info || {};
@@ -173,9 +177,6 @@ export default {
     if (req.method !== "GET") {
       return json({ error: "Method not allowed" }, 405, origin);
     }
-    if (!(await rateLimit(req))) {
-      return json({ error: "Too many requests" }, 429, origin);
-    }
 
     const url = new URL(req.url);
     const parts = url.pathname.split("/").filter(Boolean);
@@ -194,15 +195,37 @@ export default {
     if (parts[0] !== "lol") return json({ error: "Invalid route" }, 400, origin);
     if (!env.RIOT_API_KEY) return json({ error: "RIOT_API_KEY missing" }, 500, origin);
 
+    // Path segments arrive percent-encoded. Decode them once (safely), then
+    // validate the decoded value and re-encode it for every upstream URL so
+    // that no raw, undecoded or double-encoded data reaches Riot.
+    function safeDecode(segment) {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return null;
+      }
+    }
+
     const H = { "X-Riot-Token": env.RIOT_API_KEY };
     let gameName, tagLine, region, legacyName;
     if (parts.length === 4) {
       [, gameName, tagLine, region] = parts;
+      gameName = safeDecode(gameName);
+      tagLine = safeDecode(tagLine);
+      region = safeDecode(region);
+      if (gameName === null || tagLine === null || region === null) {
+        return json({ error: "Malformed path encoding" }, 400, origin);
+      }
       if (!NAME_PATTERN.test(gameName) || !TAG_PATTERN.test(tagLine)) {
         return json({ error: "Invalid Riot ID" }, 400, origin);
       }
     } else if (parts.length === 3) {
       [, legacyName, region] = parts;
+      legacyName = safeDecode(legacyName);
+      region = safeDecode(region);
+      if (legacyName === null || region === null) {
+        return json({ error: "Malformed path encoding" }, 400, origin);
+      }
       if (!NAME_PATTERN.test(legacyName)) {
         return json({ error: "Invalid summoner name" }, 400, origin);
       }
@@ -217,6 +240,13 @@ export default {
     const platform = normalizePlatform(region);
     if (!platform) return json({ error: "Unsupported region" }, 400, origin);
     const route = routeRegion(platform);
+
+    // Rate limiting happens only AFTER route/input validation: valid traffic
+    // is limited, invalid requests are answered without creating buckets.
+    // Best-effort, colo-local, fail-open — see rateLimit() above.
+    if (!(await rateLimit(req))) {
+      return json({ error: "Too many requests" }, 429, origin);
+    }
     const out = { errors: [] };
 
     try {
@@ -236,7 +266,7 @@ export default {
         puuid = sj.puuid;
       }
 
-      const byPuuidURL = `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`;
+      const byPuuidURL = `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`;
       const s2 = await fetchCached(byPuuidURL, H, ctx, 300);
       if (!s2.ok) return passthrough("by-puuid", s2, origin);
       const summ = await s2.json();
@@ -244,7 +274,7 @@ export default {
       out.level = summ.summonerLevel;
       if (debug) out._ids = { id: summ.id, puuid: summ.puuid };
 
-      const rankedURL = `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summ.id}`;
+      const rankedURL = `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${encodeURIComponent(summ.id)}`;
       const r1 = await fetchCached(rankedURL, H, ctx, 120);
       if (r1.ok) {
         const arr = await r1.json();

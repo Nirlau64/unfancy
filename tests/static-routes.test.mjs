@@ -32,10 +32,36 @@ test('each static route has unique title, canonical and OG metadata', () => {
     assert.ok(!titles.has('Unfancy - Dashboard'), 'no route reuses the home title');
 });
 
-test('query compatibility: home shell still routes via ?page=', () => {
+test('internal links use the clean static paths (legacy ?page= routes stay valid)', () => {
     const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-    for (const page of Object.keys(ROUTES)) {
-        assert.ok(html.includes(`href="/?page=${page}"`), `home links to ?page=${page}`);
+    const home = readFileSync(join(ROOT, 'pages/home.html'), 'utf8');
+    for (const file of [html, home]) {
+        for (const page of Object.keys(ROUTES)) {
+            assert.ok(file.includes(`href="/${page}/"`), `links to /${page}/`);
+            assert.ok(!file.includes(`href="/?page=${page}"`), `no raw query link to ${page}`);
+        }
+    }
+});
+
+test('generated routes are in sync with the generator (drift check)', async () => {
+    const pages = Object.keys(ROUTES);
+    const before = new Map(pages.map(p => [p, readFileSync(join(ROOT, p, 'index.html'), 'utf8')]));
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const run = promisify(execFile);
+    await run('node', ['scripts/build-routes.mjs'], { cwd: ROOT });
+    for (const page of pages) {
+        const after = readFileSync(join(ROOT, page, 'index.html'), 'utf8');
+        assert.equal(after, before.get(page), `${page}/index.html is stale — run "node scripts/build-routes.mjs" and commit the regenerated pages`);
+    }
+});
+
+test('generated routes and shell contain no trailing whitespace (git diff --check hygiene)', () => {
+    const files = ['index.html', 'steam/index.html', 'spotify/index.html', 'lol/index.html', 'socials/index.html'];
+    for (const file of files) {
+        const lines = readFileSync(join(ROOT, file), 'utf8').split('\n');
+        const bad = lines.findIndex(line => /[ \t]$/.test(line));
+        assert.equal(bad, -1, `${file} line ${bad + 1} has trailing whitespace`);
     }
 });
 

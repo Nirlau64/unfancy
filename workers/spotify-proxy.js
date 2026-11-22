@@ -7,7 +7,11 @@ const TOP_TRACKS_ENDPOINT = 'https://api.spotify.com/v1/me/top/tracks';
 
 const VALID_RANGES = new Set(['short_term', 'medium_term', 'long_term']);
 
-// Simple abuse guard: fixed window per client IP, backed by the Cache API.
+// Best-effort abuse guard: fixed window per client IP, backed by the Cache
+// API. It is colo-local (per data centre), not globally consistent, and it
+// FAILS OPEN when the cache backend errors — a cost guard, never a security
+// boundary. Zone-level rate limiting rules would be required for global
+// enforcement (missing permission; see docs/cloudflare-write-plan.md).
 const RATE_LIMIT = 30; // requests
 const RATE_WINDOW_SECONDS = 60;
 
@@ -155,11 +159,30 @@ async function handleRequest(request, env, ctx) {
     if (request.method !== 'GET') {
       return json({ error: 'Method not allowed' }, 405, origin);
     }
+
+    const url = new URL(request.url);
+
+    // Validate the endpoint and inputs BEFORE the rate limiter: invalid
+    // requests are answered directly and must not create limiter buckets.
+    const isTop = url.pathname === '/top-artists' || url.pathname === '/top-tracks';
+    if (!['/now-playing', '/refresh-check', '/top-artists', '/top-tracks'].includes(url.pathname)) {
+      return json({ error: 'Invalid endpoint. Use /now-playing, /top-artists, or /top-tracks' }, 404, origin);
+    }
+    if (isTop) {
+      const timeRange = url.searchParams.get('range') || 'medium_term';
+      if (!VALID_RANGES.has(timeRange)) {
+        return json({ error: 'Invalid range. Use short_term, medium_term, or long_term' }, 400, origin);
+      }
+    }
+    if (url.pathname === '/refresh-check' && (!env.DIAG_TOKEN || request.headers.get('x-diag-token') !== env.DIAG_TOKEN)) {
+      return json({ error: 'Not found' }, 404, origin);
+    }
+
+    // Rate limiting happens only after validation (see comment above);
+    // best-effort, colo-local, fail-open — see rateLimit() above.
     if (!(await rateLimit(request))) {
       return json({ error: 'Too many requests' }, 429, origin);
     }
-
-    const url = new URL(request.url);
 
     if (url.pathname === '/now-playing') {
       const tokenResp = await getAccessToken(env, ctx);
@@ -179,9 +202,6 @@ async function handleRequest(request, env, ctx) {
     // refresh token to be present, always no-store; scheduled for removal in a
     // follow-up deploy after binding-change verification.
     if (url.pathname === '/refresh-check') {
-      if (!env.DIAG_TOKEN || request.headers.get('x-diag-token') !== env.DIAG_TOKEN) {
-        return json({ error: 'Not found' }, 404, origin);
-      }
       let refreshToken;
       try {
         refreshToken = await env.TOKENS.get('spotify:refresh_token');
@@ -209,9 +229,6 @@ async function handleRequest(request, env, ctx) {
 
     if (url.pathname === '/top-artists' || url.pathname === '/top-tracks') {
       const timeRange = url.searchParams.get('range') || 'medium_term';
-      if (!VALID_RANGES.has(timeRange)) {
-        return json({ error: 'Invalid range. Use short_term, medium_term, or long_term' }, 400, origin);
-      }
       const tokenResp = await getAccessToken(env, ctx);
       if (tokenResp.error) {
         return json({ error: 'Spotify API temporarily unavailable' }, 502, origin);

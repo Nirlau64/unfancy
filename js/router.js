@@ -19,6 +19,16 @@ const pageCache = new Map();
 const pageFetches = new Map();
 let currentAbortController = null;
 
+// Clean public paths for the statically generated route pages. New history
+// entries use these; the legacy `?page=` routes keep working because
+// getPageFromURL() accepts both forms.
+const CLEAN_PATHS = {
+    steam: '/steam/',
+    spotify: '/spotify/',
+    lol: '/lol/',
+    socials: '/socials/'
+};
+
 // A shared fragment fetch may finish after navigation changes, warming the cache for reuse.
 function getPageHTML(pageName) {
     if (pageCache.has(pageName)) {
@@ -85,7 +95,9 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
         contentDiv.innerHTML = newContentHTML;
 
         if (pushState) {
-            const url = pageName === 'home' ? '/' : `/?page=${pageName}`;
+            // Clean paths for the generated static routes, '/' for home.
+            // Legacy ?page= URLs remain valid entry points via getPageFromURL.
+            const url = pageName === 'home' ? '/' : (CLEAN_PATHS[pageName] || `/?page=${pageName}`);
             window.history.pushState({ page: pageName }, '', url);
         }
 

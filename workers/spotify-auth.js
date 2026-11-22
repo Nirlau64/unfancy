@@ -48,6 +48,19 @@ async function codeChallenge(verifier) {
 async function setupPage(request, env) {
   if (request.method !== 'GET') return html('<p>Method not allowed.</p>', 405);
   if (!originAllowed(request)) return html('<h1>Spotify</h1><p>Nicht erlaubter Host.</p>', 403);
+  // Access policy for /setup: anyone who can reach this host can start an
+  // OAuth flow. Completing it stores *their* refresh token, so an attacker
+  // could replace the stored token (integration take-over). When
+  // SETUP_TOKEN is configured, the exact value must be supplied as ?key=;
+  // otherwise the endpoint stays open and the unresolved policy is a
+  // documented gap (recommended hardening: Cloudflare Access in front of
+  // /setup, or configuring SETUP_TOKEN). See docs/cloudflare-write-plan.md.
+  if (env.SETUP_TOKEN) {
+    const provided = new URL(request.url).searchParams.get('key') || '';
+    if (!timingSafeEqual(provided, env.SETUP_TOKEN)) {
+      return html('<h1>Spotify</h1><p>Setup-Zugang verweigert.</p>', 403);
+    }
+  }
 
   const verifier = randomVerifier();
   const challenge = await codeChallenge(verifier);
@@ -80,7 +93,12 @@ async function callback(request, env) {
   const stateKey = `oauth:state:${state}`;
   const statePayload = await env.TOKENS.get(stateKey, 'json');
   if (!statePayload?.verifier) return html('<h1>Spotify</h1><p>OAuth-Zustand ungültig oder abgelaufen.</p>', 400);
-  // Exactly-once consume: replaying the same state must fail.
+  // Single-use consume: the state is deleted immediately after the read so a
+  // replayed callback no longer finds it. NOTE: KV get+delete is NOT atomic —
+  // a callback arriving in the small window between get and delete can still
+  // consume the same state twice. This is a documented, accepted limitation
+  // (see docs/cloudflare-write-plan.md, W2 "Known Limitation"); the window is
+  // tiny and the worst case is a duplicate token exchange, never a leak.
   await env.TOKENS.delete(stateKey);
 
   const tokenResponse = await fetch(SPOTIFY_TOKEN, {
@@ -109,6 +127,18 @@ async function callback(request, env) {
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+
+// Constant-time comparison so the setup token is not revealed via timing.
+function timingSafeEqual(a, b) {
+  const ab = new TextEncoder().encode(String(a));
+  const bb = new TextEncoder().encode(String(b));
+  const len = Math.max(ab.length, bb.length);
+  let diff = ab.length ^ bb.length;
+  for (let i = 0; i < len; i++) {
+    diff |= (ab[i] || 0) ^ (bb[i] || 0);
+  }
+  return diff === 0;
 }
 
 export default {
