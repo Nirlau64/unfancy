@@ -24,3 +24,40 @@ test('cloudflare-diff.txt is clearly marked historical with a stated baseline', 
   assert.ok(diff.startsWith('# HISTORISCH'), 'diff must open with the historical marker');
   assert.match(diff, /baseline|Baseline|3dcf4b82/);
 });
+
+test('every W0 endpoint targets a per-run suffixed probe name (never the unsuffixed name)', async () => {
+  const text = await readFile(new URL('../docs/cloudflare-write-plan.md', import.meta.url), 'utf8');
+  // No unsuffixed endpoint target at all.
+  assert.doesNotMatch(text, /\/workers\/scripts\/unfancy-harden-probe\//,
+    'W0 endpoint targets must use the per-run suffixed name, never bare unfancy-harden-probe');
+  // Bare (unsuffixed) name occurrences are allowed only in the explicit rule/naming sentences.
+  for (const line of text.split('\n')) {
+    for (const m of line.match(/unfancy-harden-probe(?!-)/g) || []) {
+      assert.match(line, /niemals|Endpoint-Konsistenz|Probe-Namensgebung/,
+        `bare probe name outside a rule sentence: ${line.slice(0, 120)}`);
+    }
+  }
+  // Every endpoint-shaped probe reference carries a <suffix>.
+  const eps = text.match(/\/workers\/scripts\/unfancy-harden-probe[^ `"]*\/?/g) || [];
+  assert.ok(eps.length > 0, 'write-plan references at least one W0 probe endpoint');
+  for (const ep of eps) assert.match(ep, /unfancy-harden-probe-(empty-)?<suffix>/, `endpoint without per-run suffix: ${ep}`);
+  // The doc must state the endpoint-consistency rule explicitly.
+  assert.match(text, /Endpoint-Konsistenz \(W0\)/);
+});
+
+test('restore bundles are labelled historical/unverified: doc states ABSENT/request:null and PARTIAL_ONLY and gates writes on exact active bundles/settings', async () => {
+  const text = await readFile(new URL('../docs/cloudflare-write-plan.md', import.meta.url), 'utf8');
+  // cf-live references must never read as a verified restore bundle.
+  for (const line of text.split('\n')) {
+    if (/cf-live/.test(line)) {
+      assert.match(line, /historisch|unverifiziert|UNVERIFIZIERT|HISTORISCH/,
+        `cf-live mention not marked historical/unverified: ${line.slice(0, 120)}`);
+    }
+  }
+  // Doc must state the manifest restore reality and the write gate.
+  assert.match(text, /`ABSENT` mit `request:null`/);
+  assert.match(text, /`PARTIAL_ONLY` mit `request:null`/);
+  assert.match(text, /kein bewiesener Rollback|kein belegter Restore/);
+  assert.match(text, /per Read-only-Export erfasst und als reviewed Artifact vorliegen/);
+});
+
