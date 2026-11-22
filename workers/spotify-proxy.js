@@ -160,12 +160,21 @@ export default {
     // Diagnostic endpoint: forces a fresh access-token exchange (bypasses the
     // token cache) and reports success without ever returning token material.
     // Proves the KV refresh-token path is intact before/after binding changes.
+    // Hardened: requires the KV refresh token to be present, always no-store,
+    // and is scheduled for removal after binding-change verification.
     if (url.pathname === '/refresh-check') {
+      const refreshToken = await env.TOKENS.get('spotify:refresh_token');
+      if (!refreshToken) {
+        return json({ ok: false, error: 'no refresh token in KV' }, 502, origin);
+      }
       const tokenResp = await getAccessToken(env, ctx, true);
-      if (tokenResp.error) {
+      if (tokenResp.error || !tokenResp.token) {
         return json({ ok: false, error: 'token exchange failed' }, 502, origin);
       }
-      return json({ ok: true, source: 'kv' }, 200, origin);
+      return new Response(JSON.stringify({ ok: true, source: 'kv' }), {
+        status: 200,
+        headers: { ...corsHeaders(origin), 'Cache-Control': 'no-store' },
+      });
     }
 
     if (url.pathname === '/top-artists' || url.pathname === '/top-tracks') {

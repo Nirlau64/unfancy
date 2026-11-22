@@ -189,7 +189,7 @@ test('429 responses carry Cache-Control: no-store', async () => {
 test('spotify-proxy /refresh-check forces a fresh KV-backed token exchange', async () => {
     globalThis.caches = makeCache();
     // Pre-warm the v2 cache: refresh-check must ignore it.
-    await caches.default.put(
+    await globalThis.caches.default.put(
         new Request('https://spotify-token-cache.local/access_token/v2'),
         new Response(JSON.stringify({ token: 'cached-token', expires_at: Date.now() + 999999 }), {
             headers: { 'Cache-Control': 'public, max-age=3300' }
@@ -221,6 +221,60 @@ test('spotify-proxy /refresh-check forces a fresh KV-backed token exchange', asy
         delete globalThis.fetch;
         globalThis.caches = makeCache();
     }
+});
+
+test('rate limiter is fail-open when cache match fails (all proxies)', async () => {
+    globalThis.caches = {
+        default: {
+            match: async (req) => {
+                if (String(req.url).includes('rate-limit.local')) throw new Error('cache read failed');
+                return undefined;
+            },
+            put: async (req, res) => {
+                if (String(req.url).includes('rate-limit.local')) throw new Error('cache write failed');
+            },
+        },
+    };
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    try {
+        const spotifyRes = await spotify.default.fetch(req('/now-playing'), spotifyEnv, ctx);
+        assert.ok(spotifyRes.status !== 429, 'spotify request served despite match failure');
+        const steamRes = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        assert.ok(steamRes.status !== 429, 'steam request served despite match failure');
+        const riotRes = await riot.default.fetch(rreq('/'), riotEnv);
+        assert.ok(riotRes.status !== 429, 'riot request served despite match failure');
+    } finally {
+        delete globalThis.fetch;
+        globalThis.caches = makeCache();
+    }
+});
+
+test('429 and upstream-failure responses carry no-store across proxies', async () => {
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    let last = null;
+    for (let i = 0; i < 31; i++) {
+        last = await spotify.default.fetch(req('/now-playing'), spotifyEnv, ctx);
+    }
+    assert.equal(last.status, 429);
+    assert.equal(last.headers.get('Cache-Control'), 'no-store');
+    delete globalThis.fetch;
+
+    globalThis.caches = makeCache();
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    for (let i = 0; i < 31; i++) {
+        last = await riot.default.fetch(rreq('/lol/Nirlau/Lauri/euw'), riotEnv);
+    }
+    assert.equal(last.status, 429);
+    assert.equal(last.headers.get('Cache-Control'), 'no-store');
+    delete globalThis.fetch;
+
+    globalThis.caches = makeCache();
+    globalThis.fetch = async () => { throw new Error('upstream down'); };
+    const errRes = await riot.default.fetch(rreq('/lol/Nirlau/Lauri/euw'), riotEnv);
+    assert.equal(errRes.status, 500);
+    assert.equal(errRes.headers.get('Cache-Control'), 'no-store');
+    delete globalThis.fetch;
+    globalThis.caches = makeCache();
 });
 
 // ---- steam-proxy ----
