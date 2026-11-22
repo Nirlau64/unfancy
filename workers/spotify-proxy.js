@@ -1,0 +1,159 @@
+const ALLOWED_ORIGINS = ['https://nirlau.de', 'https://www.nirlau.de'];
+
+const TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
+const NOW_PLAYING_ENDPOINT = 'https://api.spotify.com/v1/me/player/currently-playing';
+const TOP_ARTISTS_ENDPOINT = 'https://api.spotify.com/v1/me/top/artists';
+const TOP_TRACKS_ENDPOINT = 'https://api.spotify.com/v1/me/top/tracks';
+
+const VALID_RANGES = new Set(['short_term', 'medium_term', 'long_term']);
+
+// Simple abuse guard: fixed window per client IP, backed by the Cache API.
+const RATE_LIMIT = 30; // requests
+const RATE_WINDOW_SECONDS = 60;
+
+function corsHeaders(origin) {
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Content-Type': 'application/json',
+  };
+  // An unknown or missing Origin never receives an ACAO header.
+  if (origin) headers['Access-Control-Allow-Origin'] = origin;
+  return headers;
+}
+
+function allowedOrigin(request) {
+  const reqOrigin = request.headers.get('Origin');
+  return reqOrigin && ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : null;
+}
+
+function json(data, status = 200, origin = null) {
+  return new Response(JSON.stringify(data), { status, headers: corsHeaders(origin) });
+}
+
+async function rateLimit(request) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const url = new URL(request.url);
+  const window = Math.floor(Date.now() / (RATE_WINDOW_SECONDS * 1000));
+  const key = new Request(`https://rate-limit.local/spotify-proxy/${ip}/${url.pathname}/${window}`);
+  const cached = await caches.default.match(key);
+  const count = cached ? Number(await cached.text()) || 0 : 0;
+  if (count >= RATE_LIMIT) return false;
+  await caches.default.put(key, new Response(String(count + 1)));
+  return true;
+}
+
+/**
+ * Holt einen Spotify Access Token, gecached für 55 Minuten (3300s).
+ */
+async function getAccessToken(env, ctx) {
+  const CACHE_KEY = 'https://spotify-token-cache.local/access_token';
+
+  const cached = await caches.default.match(CACHE_KEY);
+  if (cached) {
+    const data = await cached.json();
+    if (data.expires_at > Date.now()) {
+      return { error: false, token: data.token };
+    }
+  }
+
+  const resp = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: 'Basic ' + btoa(env.SPOTIFY_CLIENT_ID + ':' + env.SPOTIFY_CLIENT_SECRET),
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: await env.TOKENS.get('spotify:refresh_token'),
+    }),
+  });
+
+  if (!resp.ok) {
+    return { error: true, status: resp.status };
+  }
+
+  const body = await resp.json();
+  const token = body.access_token;
+
+  const cacheResp = new Response(JSON.stringify({
+    token,
+    expires_at: Date.now() + 3300 * 1000,
+  }));
+  cacheResp.headers.set('Cache-Control', 'public, max-age=3300');
+  ctx.waitUntil(caches.default.put(CACHE_KEY, cacheResp));
+
+  return { error: false, token };
+}
+
+async function fetchSpotify(url, token, ctx, cacheTtl = 0) {
+  if (cacheTtl > 0) {
+    const cacheKey = new Request(url);
+    const cached = await caches.default.match(cacheKey);
+    if (cached) return cached.clone();
+  }
+
+  const resp = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (cacheTtl > 0 && resp.ok) {
+    const cloned = new Response(resp.body, resp);
+    cloned.headers.set('Cache-Control', `public, max-age=${cacheTtl}`);
+    ctx.waitUntil(caches.default.put(new Request(url), cloned.clone()));
+    return cloned;
+  }
+
+  return resp;
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const origin = allowedOrigin(request);
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+    if (request.method !== 'GET') {
+      return json({ error: 'Method not allowed' }, 405, origin);
+    }
+    if (!(await rateLimit(request))) {
+      return json({ error: 'Too many requests' }, 429, origin);
+    }
+
+    const url = new URL(request.url);
+
+    if (url.pathname === '/now-playing') {
+      const tokenResp = await getAccessToken(env, ctx);
+      if (tokenResp.error) {
+        return json({ error: 'Spotify API temporarily unavailable' }, 502, origin);
+      }
+      const apiResp = await fetchSpotify(NOW_PLAYING_ENDPOINT, tokenResp.token, ctx, 0);
+      if (apiResp.status === 204) return json({ is_playing: false }, 200, origin);
+      if (!apiResp.ok) return json({ error: 'Spotify API error' }, apiResp.status, origin);
+      return json(await apiResp.json(), 200, origin);
+    }
+
+    if (url.pathname === '/top-artists' || url.pathname === '/top-tracks') {
+      const timeRange = url.searchParams.get('range') || 'medium_term';
+      if (!VALID_RANGES.has(timeRange)) {
+        return json({ error: 'Invalid range. Use short_term, medium_term, or long_term' }, 400, origin);
+      }
+      const tokenResp = await getAccessToken(env, ctx);
+      if (tokenResp.error) {
+        return json({ error: 'Spotify API temporarily unavailable' }, 502, origin);
+      }
+      const limit = 12;
+      const baseEndpoint = url.pathname === '/top-artists' ? TOP_ARTISTS_ENDPOINT : TOP_TRACKS_ENDPOINT;
+      const spotifyUrl = `${baseEndpoint}?time_range=${timeRange}&limit=${limit}`;
+      const apiResp = await fetchSpotify(spotifyUrl, tokenResp.token, ctx, 600);
+      if (!apiResp.ok) return json({ error: 'Spotify API error' }, apiResp.status, origin);
+      return json(await apiResp.json(), 200, origin);
+    }
+
+    return json({ error: 'Invalid endpoint. Use /now-playing, /top-artists, or /top-tracks' }, 404, origin);
+  },
+};
