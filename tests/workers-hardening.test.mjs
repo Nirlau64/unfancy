@@ -147,6 +147,12 @@ test('spotify-auth /setup fails closed and requires SETUP_TOKEN in a header', as
     assert.equal(wrongKey.status, 403, 'wrong key rejected');
     const queryKey = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup?key=s3cret-value'), gatedEnv);
     assert.equal(queryKey.status, 403, 'query-string credential rejected');
+    const noSchema = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 's3cret-value' } }), gatedEnv);
+    assert.equal(noSchema.status, 403, 'credential without Bearer schema rejected');
+    const wrongSchema = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Basic s3cret-value' } }), gatedEnv);
+    assert.equal(wrongSchema.status, 403, 'non-Bearer schema rejected');
+    const wrongBearer = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer wrong' } }), gatedEnv);
+    assert.equal(wrongBearer.status, 403, 'wrong Bearer credential rejected');
     const unconfigured = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer anything' } }), { ...authEnv, SETUP_TOKEN: undefined });
     assert.equal(unconfigured.status, 503, 'missing SETUP_TOKEN fails closed');
     globalThis.fetch = async () => new Response('{}', { status: 200 });

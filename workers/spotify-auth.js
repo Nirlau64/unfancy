@@ -51,8 +51,10 @@ async function setupPage(request, env) {
   // Fail closed: do not expose an OAuth flow that can replace the stored token.
   // Keep the credential out of URLs, where it would leak into logs and history.
   if (!env.SETUP_TOKEN) return html('<h1>Spotify</h1><p>Setup nicht konfiguriert.</p>', 503);
-  const provided = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
-  if (!timingSafeEqual(provided, env.SETUP_TOKEN)) {
+  const authorization = request.headers.get('authorization') || '';
+  const bearerMatch = /^Bearer\s+(.+)$/i.exec(authorization);
+  const provided = bearerMatch?.[1] || '';
+  if (!bearerMatch || !timingSafeEqual(provided, env.SETUP_TOKEN)) {
     return html('<h1>Spotify</h1><p>Setup-Zugang verweigert.</p>', 403);
   }
 
