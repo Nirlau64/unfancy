@@ -26,7 +26,13 @@ function allowedOrigin(req) {
 }
 
 const json = (data, status = 200, origin = null) =>
-  new Response(JSON.stringify(data), { status, headers: corsHeaders(origin) });
+  new Response(JSON.stringify(data), { status, headers: withCachePolicy(status, corsHeaders(origin)) });
+
+// Errors, 404s and rate-limit responses must never be cached.
+function withCachePolicy(status, headers) {
+  if (status !== 200) headers['Cache-Control'] = 'no-store';
+  return headers;
+}
 
 async function rateLimit(req) {
   const ip = req.headers.get('CF-Connecting-IP') || 'unknown';

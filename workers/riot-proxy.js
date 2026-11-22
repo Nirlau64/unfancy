@@ -32,7 +32,10 @@ function allowedOrigin(req) {
 }
 
 function json(obj, status = 200, origin = null) {
-  return new Response(JSON.stringify(obj), { status, headers: corsHeaders(origin) });
+  const headers = corsHeaders(origin);
+  // Errors, 404s and rate-limit responses must never be cached.
+  if (status !== 200) headers.set('Cache-Control', 'no-store');
+  return new Response(JSON.stringify(obj), { status, headers });
 }
 
 async function rateLimit(req) {

@@ -142,6 +142,16 @@ test('rate limiter buckets by path segment and Vary: Origin is set', async () =>
     delete globalThis.fetch;
 });
 
+test('error and rate-limit responses are not cacheable', async () => {
+    globalThis.caches = makeCache();
+    const notFound = await spotify.default.fetch(req('/nope'), spotifyEnv, ctx);
+    assert.equal(notFound.headers.get('Cache-Control'), 'no-store');
+    const steam404 = await steam.default.fetch(req(`/unknown?steamid=${steamid}`), steamEnv);
+    assert.equal(steam404.headers.get('Cache-Control'), 'no-store');
+    const riot404 = await riot.default.fetch(rreq('/nope'), riotEnv);
+    assert.equal(riot404.headers.get('Cache-Control'), 'no-store');
+});
+
 // ---- steam-proxy ----
 const steam = await import('../workers/steam-proxy.js');
 const steamEnv = { STEAM_API_KEY: 'k' };
@@ -195,6 +205,24 @@ test('steam-proxy: rate limit returns 429 after the configured burst and buckets
         // A different first path segment has its own bucket.
         const other = await steam.default.fetch(req(`/owned?steamid=${steamid}`), steamEnv);
         assert.ok(other.status !== 429, 'separate bucket for a different path segment');
+    } finally {
+        delete globalThis.fetch;
+        globalThis.caches = makeCache();
+    }
+});
+
+test('steam-proxy: rate limit buckets are per client IP', async () => {
+    globalThis.caches = makeCache();
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    try {
+        for (let i = 0; i < 30; i++) {
+            await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        }
+        assert.equal((await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv)).status, 429);
+        const otherHeaders = new Headers();
+        otherHeaders.set('CF-Connecting-IP', '198.51.100.9');
+        const other = await steam.default.fetch(new Request(`${BASE}/profile?steamid=${steamid}`, { headers: otherHeaders }), steamEnv);
+        assert.ok(other.status !== 429, 'second IP has its own bucket');
     } finally {
         delete globalThis.fetch;
         globalThis.caches = makeCache();

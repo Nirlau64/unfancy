@@ -29,7 +29,10 @@ function allowedOrigin(request) {
 }
 
 function json(data, status = 200, origin = null) {
-  return new Response(JSON.stringify(data), { status, headers: corsHeaders(origin) });
+  const headers = corsHeaders(origin);
+  // Errors, 404s and rate-limit responses must never be cached.
+  if (status !== 200) headers['Cache-Control'] = 'no-store';
+  return new Response(JSON.stringify(data), { status, headers });
 }
 
 async function rateLimit(request) {
@@ -53,7 +56,10 @@ async function rateLimit(request) {
  * Holt einen Spotify Access Token, gecached für 55 Minuten (3300s).
  */
 async function getAccessToken(env, ctx) {
-  const CACHE_KEY = 'https://spotify-token-cache.local/access_token';
+  // Key is versioned per source revision so a deploy always starts with a cold
+  // token cache: the first request after a deploy provably exercises the KV
+  // refresh-token path.
+  const CACHE_KEY = 'https://spotify-token-cache.local/access_token/v2';
 
   const cached = await caches.default.match(CACHE_KEY);
   if (cached) {
