@@ -3,9 +3,10 @@ import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { logInvocation, redactPath } from '../workers/invocation-logging.js';
 
- test('redacts sensitive query values without changing safe parameters', () => {
+ test('omits all query data from logged paths, including unknown parameter names', () => {
   const result = redactPath('https://worker.example/callback?token=TOPSECRET&api_key=KEYSECRET&range=short&state=STATESECRET');
-  assert.equal(result, '/callback?token=%5BREDACTED%5D&api_key=%5BREDACTED%5D&range=short&state=%5BREDACTED%5D');
+  assert.equal(result, '/callback');
+  assert.equal(redactPath('https://worker.example/path?customCredential=TOPSECRET'), '/path');
   assert.doesNotMatch(result, /TOPSECRET|KEYSECRET|STATESECRET/);
 });
 
@@ -22,7 +23,7 @@ test('logs invocation metadata and never logs query secrets', async () => {
   assert.equal(lines.length, 1);
   const record = JSON.parse(lines[0]);
   assert.equal(record.method, 'GET');
-  assert.equal(record.path, '/a?key=%5BREDACTED%5D');
+  assert.equal(record.path, '/a');
   assert.equal(record.status, 201);
   assert.equal(typeof record.timestamp, 'string');
   assert.equal(typeof record.durationMs, 'number');

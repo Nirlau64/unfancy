@@ -284,45 +284,29 @@ test('429 responses carry Cache-Control: no-store', async () => {
     }
 });
 
-test('spotify-proxy /refresh-check forces a fresh KV-backed token exchange', async () => {
+test('spotify-proxy /refresh-check is inert and never reads KV or calls Spotify', async () => {
     globalThis.caches = makeCache();
-    // Pre-warm the v2 cache: refresh-check must ignore it.
-    await globalThis.caches.default.put(
-        new Request('https://spotify-token-cache.local/access_token/v2'),
-        new Response(JSON.stringify({ token: 'cached-token', expires_at: Date.now() + 999999 }), {
-            headers: { 'Cache-Control': 'public, max-age=3300' }
-        })
-    );
     let kvRead = false;
     const spotifyEnvProbe = {
         SPOTIFY_CLIENT_ID: 'id',
         SPOTIFY_CLIENT_SECRET: 'secret',
-        DIAG_TOKEN: 'diag-secret',
         TOKENS: {
             get: async () => { kvRead = true; return 'refresh-token'; },
         },
     };
+    let spotifyCall = false;
     globalThis.fetch = async (url, init) => {
         if (String(url).includes('accounts.spotify.com/api/token')) {
+            spotifyCall = true;
             return new Response(JSON.stringify({ access_token: 'fresh', expires_in: 3600 }), { status: 200 });
         }
         return new Response('{}', { status: 200 });
     };
     try {
-        const diagReq = new Request(`${BASE}/refresh-check`, {
-            headers: new Headers({ 'x-diag-token': 'diag-secret', 'CF-Connecting-IP': '203.0.113.7' }),
-        });
-        const res = await spotify.default.fetch(diagReq, spotifyEnvProbe, ctx);
-        assert.equal(res.status, 200);
-        const body = await res.json();
-        assert.deepEqual(body, { ok: true, source: 'kv' });
-        assert.ok(kvRead, 'refresh-check performed a real KV read');
-        assert.equal(res.headers.get('Cache-Control'), 'no-store');
-        // No token material in the response.
-        assert.ok(!JSON.stringify(body).includes('fresh'));
-        // Without the diagnostic token the endpoint is inert.
-        const unauth = await spotify.default.fetch(req('/refresh-check'), spotifyEnvProbe, ctx);
-        assert.equal(unauth.status, 404);
+        const response = await spotify.default.fetch(req('/refresh-check'), spotifyEnvProbe, ctx);
+        assert.equal(response.status, 404);
+        assert.equal(kvRead, false, 'unknown endpoint must not read refresh-token KV');
+        assert.equal(spotifyCall, false, 'unknown endpoint must not exchange Spotify tokens');
     } finally {
         delete globalThis.fetch;
         globalThis.caches = makeCache();

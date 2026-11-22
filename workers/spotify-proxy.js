@@ -169,7 +169,7 @@ async function handleRequest(request, env, ctx) {
     // Validate the endpoint and inputs BEFORE the rate limiter: invalid
     // requests are answered directly and must not create limiter buckets.
     const isTop = url.pathname === '/top-artists' || url.pathname === '/top-tracks';
-    if (!['/now-playing', '/refresh-check', '/top-artists', '/top-tracks'].includes(url.pathname)) {
+    if (!['/now-playing', '/top-artists', '/top-tracks'].includes(url.pathname)) {
       return json({ error: 'Invalid endpoint. Use /now-playing, /top-artists, or /top-tracks' }, 404, origin);
     }
     if (isTop) {
@@ -177,9 +177,6 @@ async function handleRequest(request, env, ctx) {
       if (!VALID_RANGES.has(timeRange)) {
         return json({ error: 'Invalid range. Use short_term, medium_term, or long_term' }, 400, origin);
       }
-    }
-    if (url.pathname === '/refresh-check' && (!env.DIAG_TOKEN || request.headers.get('x-diag-token') !== env.DIAG_TOKEN)) {
-      return json({ error: 'Not found' }, 404, origin);
     }
 
     // Rate limiting happens only after validation (see comment above);
@@ -199,37 +196,6 @@ async function handleRequest(request, env, ctx) {
       return json(await apiResp.json(), 200, origin);
     }
 
-    // Diagnostic endpoint: forces a fresh access-token exchange (bypasses the
-    // token cache) and reports success without ever returning token material.
-    // Proves the KV refresh-token path is intact before/after binding changes.
-    // Hardened: gated by a secret diagnostic token header, requires the KV
-    // refresh token to be present, always no-store; scheduled for removal in a
-    // follow-up deploy after binding-change verification.
-    if (url.pathname === '/refresh-check') {
-      let refreshToken;
-      try {
-        refreshToken = await env.TOKENS.get('spotify:refresh_token');
-      } catch {
-        return json({ ok: false, error: 'kv read failed' }, 502, origin);
-      }
-      if (!refreshToken) {
-        return json({ ok: false, error: 'no refresh token in KV' }, 502, origin);
-      }
-      // Exactly one KV read; the exchange uses exactly this value.
-      let tokenResp;
-      try {
-        tokenResp = await exchangeRefreshToken(env, refreshToken);
-      } catch {
-        return json({ ok: false, error: 'token exchange failed' }, 502, origin);
-      }
-      if (tokenResp.error || !tokenResp.token) {
-        return json({ ok: false, error: 'token exchange failed' }, 502, origin);
-      }
-      return new Response(JSON.stringify({ ok: true, source: 'kv' }), {
-        status: 200,
-        headers: { ...corsHeaders(origin), 'Cache-Control': 'no-store' },
-      });
-    }
 
     if (url.pathname === '/top-artists' || url.pathname === '/top-tracks') {
       const timeRange = url.searchParams.get('range') || 'medium_term';

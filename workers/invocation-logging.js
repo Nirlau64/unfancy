@@ -1,11 +1,9 @@
-const SENSITIVE_QUERY_KEYS = /^(?:token|key|secret|api[_-]?key|authorization|code|state|client[_-]?secret|access[_-]?token|refresh[_-]?token)$/i;
 
 export function redactPath(input) {
   const url = new URL(input);
-  for (const key of [...url.searchParams.keys()]) {
-    if (SENSITIVE_QUERY_KEYS.test(key)) url.searchParams.set(key, '[REDACTED]');
-  }
-  return `${url.pathname}${url.search}`;
+  // Query names and values are caller-controlled; a sensitive-key allowlist
+  // cannot anticipate every credential convention.
+  return url.pathname;
 }
 
 export async function logInvocation(request, handler) {
