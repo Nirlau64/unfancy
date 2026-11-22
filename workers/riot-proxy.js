@@ -22,6 +22,7 @@ function corsHeaders(origin) {
   });
   // An unknown or missing Origin never receives an ACAO header.
   if (origin) headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Vary", "Origin");
   return headers;
 }
 
@@ -36,12 +37,18 @@ function json(obj, status = 200, origin = null) {
 
 async function rateLimit(req) {
   const ip = req.headers.get('CF-Connecting-IP') || 'unknown';
+  const url = new URL(req.url);
+  // Bucket by client IP and first path segment for consistency with the other
+  // proxies. Window rollover happens implicitly via the cache TTL.
   const window = Math.floor(Date.now() / (RATE_WINDOW_SECONDS * 1000));
-  const key = new Request(`https://rate-limit.local/riot-proxy/${ip}/${window}`);
+  const bucket = url.pathname.split('/').filter(Boolean)[0] || 'root';
+  const key = new Request(`https://rate-limit.local/riot-proxy/${ip}/${bucket}/${window}`);
   const cached = await caches.default.match(key);
   const count = cached ? Number(await cached.text()) || 0 : 0;
   if (count >= RATE_LIMIT) return false;
-  await caches.default.put(key, new Response(String(count + 1)));
+  const counter = new Response(String(count + 1));
+  counter.headers.set('Cache-Control', `public, max-age=${RATE_WINDOW_SECONDS}`);
+  await caches.default.put(key, counter);
   return true;
 }
 

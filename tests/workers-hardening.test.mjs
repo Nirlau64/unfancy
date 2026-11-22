@@ -130,6 +130,18 @@ test('spotify-proxy: rate limit returns 429 after the configured burst', async (
     }
 });
 
+test('rate limiter buckets by path segment and Vary: Origin is set', async () => {
+    globalThis.caches = makeCache();
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    const spotifyRes = await spotify.default.fetch(req('/now-playing'), spotifyEnv, ctx);
+    assert.equal(spotifyRes.headers.get('Vary'), 'Origin');
+    const steamRes = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+    assert.equal(steamRes.headers.get('Vary'), 'Origin');
+    const riotRes = await riot.default.fetch(rreq('/lol/Nirlau/Lauri/euw'), riotEnv);
+    assert.equal(riotRes.headers.get('Vary'), 'Origin');
+    delete globalThis.fetch;
+});
+
 // ---- steam-proxy ----
 const steam = await import('../workers/steam-proxy.js');
 const steamEnv = { STEAM_API_KEY: 'k' };
@@ -168,6 +180,24 @@ test('steam-proxy: upstream errors do not leak internals', async () => {
         assert.ok(!JSON.stringify(body).includes('internal-host-name'));
     } finally {
         delete globalThis.fetch;
+    }
+});
+
+test('steam-proxy: rate limit returns 429 after the configured burst and buckets per route', async () => {
+    globalThis.caches = makeCache();
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    try {
+        let status = null;
+        for (let i = 0; i < 31; i++) {
+            status = (await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv)).status;
+        }
+        assert.equal(status, 429);
+        // A different first path segment has its own bucket.
+        const other = await steam.default.fetch(req(`/owned?steamid=${steamid}`), steamEnv);
+        assert.ok(other.status !== 429, 'separate bucket for a different path segment');
+    } finally {
+        delete globalThis.fetch;
+        globalThis.caches = makeCache();
     }
 });
 
