@@ -1,9 +1,13 @@
-const CACHE_NAME = 'unfancy-v5';
+const CACHE_NAME = 'unfancy-v7';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
     '/manifest.json',
     '/style.css',
+    '/steam/',
+    '/spotify/',
+    '/lol/',
+    '/socials/',
     '/js/main.js',
     '/js/router.js',
     '/js/api.js',
@@ -16,7 +20,11 @@ const STATIC_ASSETS = [
     '/js/views/socials.js',
     // Page fragments are warmed after the first render instead of during install.
     '/404.html',
-    '/assets/favicon.png',
+    '/assets/favicon-64.png',
+    '/assets/icon-192.png',
+    '/assets/icon-512.png',
+    '/assets/apple-touch-icon.png',
+    '/assets/vendor/chart.umd.js',
     'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap'
 ];
 
@@ -52,17 +60,9 @@ self.addEventListener('fetch', (e) => {
         return;
     }
 
-    // Other API requests -> Network First (fallback to cache)
+    // API responses are private/dynamic; never persist them in CacheStorage.
     if (url.hostname.includes('api.nirlau.de')) {
-        e.respondWith(
-            fetch(e.request)
-                .then(response => {
-                    const resClone = response.clone();
-                    caches.open(CACHE_NAME).then(cache => cache.put(e.request, resClone));
-                    return response;
-                })
-                .catch(() => caches.match(e.request))
-        );
+        e.respondWith(fetch(new Request(e.request, { cache: 'no-store' })));
         return;
     }
 

@@ -28,8 +28,15 @@ function triggerPageLogic(pageName, signal = null) {
         currentPageCleanup = null;
     }
 
-    // Reset page title (in case it was changed by Spotify Live Status)
-    document.title = 'Unfancy - Dashboard';
+    // Reset page title (in case it was changed by Spotify Live Status), but keep
+    // the unique per-page titles that also power the static deep-link routes.
+    document.title = {
+        home: 'Unfancy - Dashboard',
+        steam: 'Unfancy - Steam Statistiken',
+        spotify: 'Unfancy - Spotify',
+        lol: 'Unfancy - League of Legends',
+        socials: 'Unfancy - Socials'
+    }[pageName] || 'Unfancy - Dashboard';
 
     switch (pageName) {
         case 'home':

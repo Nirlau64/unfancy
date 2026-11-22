@@ -5,16 +5,20 @@ import { fetchAPI } from '../api.js';
 import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
 
 /**
- * Dynamically loads Chart.js only when needed (~200KB).
+ * Dynamically loads the locally pinned Chart.js build only when needed (~200KB).
  */
+const CHARTJS_URL = '/assets/vendor/chart.umd.js';
+const CHARTJS_LOAD_TIMEOUT_MS = 5000;
+
 async function loadChartJS() {
     if (window.Chart) return;
     await new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        s.src = CHARTJS_URL;
         s.onload = resolve;
         s.onerror = reject;
         document.head.appendChild(s);
+        setTimeout(() => reject(new Error(`Chart.js load timeout after ${CHARTJS_LOAD_TIMEOUT_MS}ms`)), CHARTJS_LOAD_TIMEOUT_MS);
     });
 }
 
@@ -287,6 +291,9 @@ async function renderChart(sortedGames, totalMins) {
         console.error('Chart.js konnte nicht geladen werden:', e);
         return;
     }
+
+    // The view may have been left while Chart.js was loading; never render on a detached canvas.
+    if (!chartCanvas.isConnected) return;
 
     if (steamChartInstance) steamChartInstance.destroy();
 

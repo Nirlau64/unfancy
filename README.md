@@ -64,12 +64,25 @@ unfancy/
 │       ├── lol.js       # Summoner, Champions, Match-History
 │       └── socials.js   # YouTube Embed, Instagram Embed
 ├── assets/
-│   └── favicon.png      # Favicon
-├── steam.html           # Redirect-Stub → /?page=steam
-├── spotify.html         # Redirect-Stub → /?page=spotify
-├── lol.html             # Redirect-Stub → /?page=lol
-└── socials.html         # Redirect-Stub → /?page=socials
+│   ├── favicon-64.png   # Kleines Favicon
+│   ├── icon-192.png     # PWA-Icon 192px
+│   ├── icon-512.png     # PWA-/OG-Icon 512px
+│   ├── apple-touch-icon.png
+│   └── vendor/chart.umd.js  # Chart.js 4.4.7 (lokal gepinnt)
+├── steam/               # Generierte statische Route → steam/index.html
+├── spotify/             # Generierte statische Route
+├── lol/                 # Generierte statische Route
+├── socials/             # Generierte statische Route
+├── sitemap.xml          # Kanonische öffentliche Routen
+├── robots.txt           # Verweist auf die Sitemap
+└── scripts/
+    ├── build-routes.mjs # Erzeugt die statischen Routen (node scripts/build-routes.mjs)
+    └── make-icons.py    # Erzeugt die optimierten Icons aus der Master-Grafik
 ```
+
+Die statischen Routen werden aus `index.html` + `pages/*.html` generiert. Nach
+Änderungen an der Shell oder Fragmenten: `node scripts/build-routes.mjs` ausführen
+und die generierten Seiten mitcommitten.
 
 ---
 

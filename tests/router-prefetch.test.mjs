@@ -4,10 +4,10 @@ import { test } from 'node:test';
 const router = await import('../js/router.js?idle-prefetch-test');
 
 const expectedFragments = [
-    'pages/steam.html',
-    'pages/spotify.html',
-    'pages/lol.html',
-    'pages/socials.html'
+    '/pages/steam.html',
+    '/pages/spotify.html',
+    '/pages/lol.html',
+    '/pages/socials.html'
 ];
 
 test('idle preloader fetches each uncached route once and reuses its cache', async () => {
@@ -27,7 +27,7 @@ test('idle preloader fetches each uncached route once and reuses its cache', asy
         ]);
 
         assert.deepEqual(
-            requests.map(url => url.replace(/^\//, '')).sort(),
+            requests.sort(),
             expectedFragments.slice().sort()
         );
 
@@ -47,7 +47,7 @@ test('a failed fragment prefetch is retryable on the next idle run', async () =>
         const url = String(input);
         const attempt = (attempts.get(url) || 0) + 1;
         attempts.set(url, attempt);
-        if (url.endsWith('pages/steam.html') && attempt === 1) {
+        if (url.endsWith('/pages/steam.html') && attempt === 1) {
             return new Response('temporary failure', { status: 503 });
         }
         return new Response(`<section data-path="${url}"></section>`, { status: 200 });
@@ -55,9 +55,9 @@ test('a failed fragment prefetch is retryable on the next idle run', async () =>
 
     try {
         await retryRouter.preloadPageFragments();
-        assert.equal(attempts.get('pages/steam.html'), 1);
+        assert.equal(attempts.get('/pages/steam.html'), 1);
         await retryRouter.preloadPageFragments();
-        assert.equal(attempts.get('pages/steam.html'), 2);
+        assert.equal(attempts.get('/pages/steam.html'), 2);
         for (const path of expectedFragments.slice(1)) {
             assert.equal(attempts.get(path), 1);
         }

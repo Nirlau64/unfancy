@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' www.instagram.com connect.facebook.net platform.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com;">
+    <meta name="theme-color" content="#0b0e0f">
+    <meta name="description" content="YouTube- und Instagram-Kanäle von Laurin.">
+    <meta property="og:title" content="Unfancy - Socials">
+    <meta property="og:description" content="YouTube- und Instagram-Kanäle von Laurin.">
+    <meta property="og:image" content="https://nirlau.de/assets/icon-512.png">
+    <meta property="og:url" content="https://nirlau.de/socials/">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Unfancy - Socials">
+    <meta name="twitter:description" content="YouTube- und Instagram-Kanäle von Laurin.">
+    <meta name="twitter:image" content="https://nirlau.de/assets/icon-512.png">
+    <link rel="canonical" href="https://nirlau.de/socials/">
+    <title>Unfancy - Socials</title>
+    
+    <!-- PWA & iOS Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="icon" type="image/png" href="/assets/favicon-64.png">
+</head>
+<body data-static-page="socials">
+
+    <div class="main-card">
+        <header class="site-header">
+            <h1>Unfancy</h1>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav-tabs" id="nav-tabs">
+            <a href="/" class="nav-link active" data-page="home">Home</a>
+            <a href="/?page=steam" class="nav-link" data-page="steam">Steam</a>
+            <a href="/?page=spotify" class="nav-link" data-page="spotify">Spotify</a>
+            <a href="/?page=lol" class="nav-link" data-page="lol">League of Legends</a>
+            <a href="/?page=socials" class="nav-link" data-page="socials">Socials</a>
+        </nav>
+
+        <!-- Dieser Container wird ausgetauscht -->
+        <main id="app-content">
+<div id="socials" class="tab-content active">
+    <div class="section text-center">
+        <div class="social-header">
+            <svg width="28" height="28" viewBox="0 0 24 24" role="img" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#FF0000"/><polygon points="10,8 16,12 10,16" fill="#fff"/></svg>
+            <h2>Neuestes YouTube-Video</h2>
+            <a class="btn-link btn-yt" href="https://www.youtube.com/@Nirlau61" target="_blank" rel="noopener noreferrer">Profil öffnen</a>
+        </div>
+        <div id="socials-yt" aria-live="polite">Lade Video...</div>
+    </div>
+
+    <div class="section text-center">
+        <div class="social-header">
+            <svg width="28" height="28" viewBox="0 0 24 24" role="img" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#E1306C"/><circle cx="12" cy="12" r="5" fill="#fff"/><circle cx="18" cy="6" r="1.5" fill="#fff"/></svg>
+            <h2>Instagram</h2>
+            <a class="btn-link btn-ig" href="https://www.instagram.com/nirlau61/" target="_blank" rel="noopener noreferrer">Profil öffnen</a>
+        </div>
+        <div id="socials-ig" style="display:flex; justify-content:center;">
+            <blockquote class="instagram-media" data-instgrm-permalink="https://www.instagram.com/p/DQwj4iaCAUE/?utm_source=ig_embed" data-instgrm-version="14" style="background:#FFF; border:0; border-radius:3px; box-shadow:0 0 1px 0 rgba(0,0,0,0.5),0 1px 10px 0 rgba(0,0,0,0.15); margin: 1px; max-width:540px; min-width:326px; padding:0; width:99.375%;">
+                <div style="padding:16px;">
+                    <a href="https://www.instagram.com/p/DQwj4iaCAUE/?utm_source=ig_embed" style="background:#FFFFFF; line-height:0; padding:0 0; text-align:center; text-decoration:none; width:100%;" target="_blank" rel="noopener noreferrer">
+                        <div style="display: flex; flex-direction: row; align-items: center;">
+                            <div style="background-color: #F4F4F4; border-radius: 50%; height: 40px; margin-right: 14px; width: 40px;"></div>
+                            <div style="display: flex; flex-direction: column; justify-content: center;">
+                                <div style="background-color: #F4F4F4; border-radius: 4px; height: 14px; margin-bottom: 6px; width: 100px;"></div>
+                                <div style="background-color: #F4F4F4; border-radius: 4px; height: 14px; width: 60px;"></div>
+                            </div>
+                        </div>
+                        <div style="padding: 19% 0;"></div>
+                        <div style="color:#3897f0; font-family:Arial,sans-serif; font-size:14px; font-weight:550;">View this post on Instagram</div>
+                        <div style="padding: 12.5% 0;"></div>
+                    </a>
+                </div>
+            </blockquote>
+        </div>
+    </div>
+</div>
+        </main>
+
+    </div>
+
+    <footer><p><span id="footer-year"></span> Unfancy - Laurin</p></footer>
+
+    <!-- Core App Logic & Router (ES6 Module) -->
+    <script type="module" src="/js/main.js"></script>
+</body>
+</html>

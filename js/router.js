@@ -8,11 +8,11 @@ import { renderError } from './utils.js';
  * Maps page names to their fragment file paths.
  */
 const PAGE_MAP = {
-    home: 'pages/home.html',
-    steam: 'pages/steam.html',
-    spotify: 'pages/spotify.html',
-    lol: 'pages/lol.html',
-    socials: 'pages/socials.html'
+    home: '/pages/home.html',
+    steam: '/pages/steam.html',
+    spotify: '/pages/spotify.html',
+    lol: '/pages/lol.html',
+    socials: '/pages/socials.html'
 };
 
 const pageCache = new Map();
@@ -140,6 +140,12 @@ export async function preloadPageFragments() {
  * @returns {string} The page name (defaults to 'home')
  */
 export function getPageFromURL() {
+    // Static deep-link routes (e.g. /steam/) take precedence over the query param.
+    const pathPage = window.location.pathname
+        .replace(/^\/+|\/+$/g, '');
+    if (PAGE_MAP[pathPage]) {
+        return pathPage;
+    }
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
     return (page && PAGE_MAP[page]) ? page : 'home';
