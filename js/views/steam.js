@@ -5,10 +5,11 @@ import { fetchAPI } from '../api.js';
 import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
 
 /**
- * Dynamically loads Chart.js only when needed (~200KB).
+ * Dynamically loads the locally pinned Chart.js build only when needed (~200KB).
+ * No CDN: the vendored file is precached by the service worker.
  */
-const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js';
-const CHART_LOAD_TIMEOUT_MS = 10000;
+const CHARTJS_URL = '/assets/vendor/chart.umd.js';
+const CHARTJS_LOAD_TIMEOUT_MS = 5000;
 let chartLoadPromise = null;
 let chartGeneration = 0;
 let steamChartInstance = null;
@@ -18,18 +19,12 @@ async function loadChartJS() {
     if (!chartLoadPromise) {
         chartLoadPromise = new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            const timeoutId = window.setTimeout(() => {
-                script.remove();
-                reject(new Error('Chart.js Ladezeit überschritten'));
-            }, CHART_LOAD_TIMEOUT_MS);
-            script.src = CHART_JS_URL;
-            script.onload = () => { window.clearTimeout(timeoutId); resolve(); };
-            script.onerror = () => {
-                window.clearTimeout(timeoutId);
-                script.remove();
-                reject(new Error('Chart.js konnte nicht geladen werden'));
-            };
+            script.src = CHARTJS_URL;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Chart.js konnte nicht geladen werden'));
             document.head.appendChild(script);
+            // A hung load must never block the Steam view; reject after 5s.
+            setTimeout(() => reject(new Error(`Chart.js load timeout after ${CHARTJS_LOAD_TIMEOUT_MS}ms`)), CHARTJS_LOAD_TIMEOUT_MS);
         }).finally(() => {
             chartLoadPromise = null;
         });
@@ -307,8 +302,11 @@ async function renderChart(sortedGames, totalMins) {
         return;
     }
 
-    // Navigation or a newer render may have happened while the CDN request was pending.
-    if (generation !== chartGeneration || !chartCanvas.isConnected || document.getElementById('steam-chart') !== chartCanvas) return;
+    // Navigation or a newer render may have happened while the load was pending.
+    if (generation !== chartGeneration) return;
+    // The view may have been left while Chart.js was loading; never render on a detached canvas.
+    if (!chartCanvas.isConnected) return;
+    if (document.getElementById('steam-chart') !== chartCanvas) return;
     if (steamChartInstance) steamChartInstance.destroy();
 
     const top10 = sortedGames.slice(0, 10);

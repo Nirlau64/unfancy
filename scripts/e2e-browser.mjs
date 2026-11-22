@@ -52,11 +52,11 @@ function startServer() {
   });
 }
 
-function launchBrowser(binary) {
+function launchBrowser(binary, startUrl) {
   const userDataDir = mkdtempSync(join(tmpdir(), 'unfancy-e2e-'));
   const child = spawn(binary, [
     '--headless=new', '--no-first-run', '--disable-gpu', '--no-sandbox',
-    `--user-data-dir=${userDataDir}`, '--remote-debugging-port=0', 'about:blank',
+    `--user-data-dir=${userDataDir}`, '--remote-debugging-port=0', startUrl,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('chrome did not expose a DevTools socket')), 15000);
@@ -101,10 +101,20 @@ class CDP {
   close() { this.ws.close(); }
 }
 
-async function evalJs(cdp, expression) {
-  const result = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-  if (result.exceptionDetails) throw new Error(`evaluate failed: ${JSON.stringify(result.exceptionDetails.exception?.description || result.exceptionDetails.text)}`);
-  return result.result.value;
+async function evalJs(cdp, expression, attempts = 4) {
+  // A CDP evaluate can race a commit ("Inspected target navigated or
+  // closed"); retry briefly instead of failing the run flakily.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const result = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+      if (result.exceptionDetails) throw new Error(`evaluate failed: ${JSON.stringify(result.exceptionDetails.exception?.description || result.exceptionDetails.text)}`);
+      return result.result.value;
+    } catch (error) {
+      const transient = String(error).includes('-32000') || String(error).includes('navigated or closed');
+      if (!transient || attempt >= attempts) throw error;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  }
 }
 
 async function navigate(cdp, url) {
@@ -125,20 +135,33 @@ let browser;
 try {
   const binaryArg = process.argv.indexOf('--browser');
   const binary = binaryArg !== -1 ? process.argv[binaryArg + 1] : 'google-chrome';
-  browser = await launchBrowser(binary);
+  browser = await launchBrowser(binary, `${ORIGIN}/steam/`);
+  // Start directly on /steam/: the initial about:blank entry otherwise stays
+  // in the session history and makes history.back() non-deterministic.
   // The DevTools ws URL is the browser-level endpoint; page commands need a
   // page target session, so fetch the page's own webSocketDebuggerUrl.
   const debugPort = new URL(browser.wsUrl).port;
-  const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
-  const page = targets.find(t => t.type === 'page');
-  if (!page) throw new Error('no page target exposed by chrome');
-  const cdp = new CDP(page.webSocketDebuggerUrl);
-  await cdp.send('Page.enable');
-  await cdp.send('Runtime.enable');
+  const cdp = await (async () => {
+    // Attaching can race the initial target navigation ("Inspected target
+    // navigated or closed"); retry with a fresh target list.
+    let lastError;
+    for (let i = 0; i < 5; i++) {
+      const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
+      const page = targets.find(t => t.type === 'page');
+      if (!page) { lastError = new Error('no page target exposed by chrome'); continue; }
+      try {
+        const cdp = new CDP(page.webSocketDebuggerUrl);
+        await cdp.send('Page.enable');
+        await cdp.send('Runtime.enable');
+        return cdp;
+      } catch (error) { lastError = error; }
+    }
+    throw lastError;
+  })();
 
   // 1. Direct load of the static /steam/ route.
   await navigate(cdp, `${ORIGIN}/steam/`);
-  await evalJs(cdp, `new Promise(r => setTimeout(r, 400))`);
+  await evalJs(cdp, `new Promise(r => setTimeout(r, 800))`);
   assert(await evalJs(cdp, `document.body.dataset.staticPage === 'steam'`), '/steam/ is served as the static steam page');
   assert(await evalJs(cdp, `!!document.querySelector('main #steam')`), '/steam/ shows the Steam fragment');
   assert(await evalJs(cdp, `document.title === 'Unfancy - Steam Statistiken'`), '/steam/ has its own title');
@@ -154,27 +177,44 @@ try {
   })()`);
   assert(swActive, 'service worker is active');
 
+  // 2b. Controlled direct load: the very first /steam/ load happens before the
+  // service worker controls the page, so reload and verify the SW actually
+  // controls a fresh direct navigation of the static route.
+  await navigate(cdp, `${ORIGIN}/steam/`);
+  const controlled = await evalJs(cdp, `(async () => {
+    for (let i = 0; i < 40; i++) {
+      if (navigator.serviceWorker.controller) return true;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    return false;
+  })()`);
+  assert(controlled, 'a direct /steam/ load is controlled by the service worker (navigator.serviceWorker.controller)');
+  assert(await evalJs(cdp, `navigator.serviceWorker.controller && navigator.serviceWorker.controller.state === 'activated'`),
+    'the controlling service worker is activated');
+  assert(await evalJs(cdp, `document.body.dataset.staticPage === 'steam' && !!document.querySelector('main #steam')`),
+    'controlled direct load still renders the Steam fragment');
+
   // 3. Navigate to Home via the nav link (clean path in history).
   await evalJs(cdp, `document.querySelector('.nav-link[data-page="home"]').click()`);
-  await evalJs(cdp, `new Promise(r => setTimeout(r, 400))`);
+  await evalJs(cdp, `new Promise(r => setTimeout(r, 800))`);
   assert(await evalJs(cdp, `location.pathname === '/' && !!document.querySelector('main #home') && !document.querySelector('main #steam')`),
     'Home shows home content on "/" and not the Steam fragment');
 
   // 4. history.back() → /steam/ with the Steam fragment (the old bug poisoned
   //    the 'home' cache with the Steam fragment; this must never regress).
-  await evalJs(cdp, `history.back(); new Promise(r => setTimeout(r, 400))`);
+  await evalJs(cdp, `history.back(); new Promise(r => setTimeout(r, 800))`);
   assert(await evalJs(cdp, `location.pathname === '/steam/'`), 'back returns to /steam/');
   assert(await evalJs(cdp, `!!document.querySelector('main #steam') && !document.querySelector('main #home')`),
     'back/forward shows the Steam fragment, not a poisoned home cache');
 
   // 5. history.forward() → Home again.
-  await evalJs(cdp, `history.forward(); new Promise(r => setTimeout(r, 400))`);
+  await evalJs(cdp, `history.forward(); new Promise(r => setTimeout(r, 800))`);
   assert(await evalJs(cdp, `location.pathname === '/' && !!document.querySelector('main #home')`),
     'forward returns to Home with home content');
 
   // 6. Legacy query route keeps working.
   await navigate(cdp, `${ORIGIN}/?page=spotify`);
-  await evalJs(cdp, `new Promise(r => setTimeout(r, 400))`);
+  await evalJs(cdp, `new Promise(r => setTimeout(r, 800))`);
   assert(await evalJs(cdp, `!!document.querySelector('main #spotify')`), 'legacy ?page=spotify still renders Spotify');
 
   console.log('E2E browser regression: all assertions passed');

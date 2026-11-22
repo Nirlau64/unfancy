@@ -423,6 +423,43 @@ test('steam-proxy: empty or missing upstream payload is not treated as success',
     }
 });
 
+test('steam-proxy: a truthy but empty player object is a schema violation, not an empty 200', async () => {
+    // players:[{}] (truthy, no steamid) must be 502 upstream_error on both
+    // player routes — never a 200 with empty/undefined fields.
+    globalThis.fetch = async () => new Response(JSON.stringify({ response: { players: [{}] } }), { status: 200 });
+    try {
+        for (const route of ['profile', 'currently-playing']) {
+            const res = await steam.default.fetch(req(`/${route}?steamid=${steamid}`), steamEnv);
+            assert.equal(res.status, 502, `${route}: empty player object is not success`);
+            const body = await res.json();
+            assert.equal(body.error, 'upstream_error');
+        }
+        // A player object without steamid but with other fields is equally invalid.
+        globalThis.fetch = async () => new Response(JSON.stringify({ response: { players: [{ personaname: 'x' }] } }), { status: 200 });
+        const noId = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        assert.equal(noId.status, 502);
+        // A complete player object still yields 200.
+        globalThis.fetch = async () => new Response(JSON.stringify({ response: { players: [{ steamid, personaname: 'Nirlau', avatarfull: 'https://avatar', profileurl: 'https://steamcommunity.com/id/nirlau/' }] } }), { status: 200 });
+        const ok = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        assert.equal(ok.status, 200);
+        assert.equal((await ok.json()).persona, 'Nirlau');
+    } finally {
+        delete globalThis.fetch;
+    }
+});
+
+test('steam-proxy: appended path segments do not alias a valid route', async () => {
+    globalThis.fetch = async () => { throw new Error('must not be called'); };
+    try {
+        for (const path of ['/profile/extra', '/profile/', '//profile', '/owned/x']) {
+            const res = await steam.default.fetch(req(`${path}?steamid=${steamid}`), steamEnv);
+            assert.equal(res.status, 404, `${path} rejected`);
+        }
+    } finally {
+        delete globalThis.fetch;
+    }
+});
+
 test('steam-proxy: only GET and OPTIONS are allowed, CORS is allowlisted', async () => {
     const post = await steam.default.fetch(req(`/owned?steamid=${steamid}`, { method: 'POST' }), steamEnv);
     assert.equal(post.status, 405);

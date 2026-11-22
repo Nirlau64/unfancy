@@ -75,6 +75,13 @@ async function steamFetch(url) {
   return r.json();
 }
 
+// A truthy but empty player object (e.g. players:[{}]) must not surface as an
+// empty 200. Steam always sends at least the steamid; anything else is a
+// schema violation and is reported as an upstream error.
+function validPlayer(p) {
+  return !!p && typeof p === "object" && typeof p.steamid === "string" && p.steamid !== "";
+}
+
 async function handle(req, env) {
   const origin = allowedOrigin(req);
 
@@ -111,7 +118,8 @@ async function handle(req, env) {
       const data = await steamFetch(`${STEAM}/ISteamUser/GetPlayerSummaries/v2/?key=${env.STEAM_API_KEY}&steamids=${steamid}`);
       if (data?.response == null) return json({ error: "upstream_error" }, 502, origin);
       const p = (data.response.players || [])[0];
-      if (!p) return json({ error: "not_found" }, 404, origin);
+      if (p === undefined) return json({ error: "not_found" }, 404, origin);
+      if (!validPlayer(p)) return json({ error: "upstream_error" }, 502, origin);
       return json({ game: p.gameextrainfo || null, appid: p.gameid || null }, 200, origin);
     }
 
@@ -183,7 +191,8 @@ async function handle(req, env) {
       const data = await steamFetch(`${STEAM}/ISteamUser/GetPlayerSummaries/v2/?key=${env.STEAM_API_KEY}&steamids=${steamid}`);
       if (data?.response == null) return json({ error: "upstream_error" }, 502, origin);
       const p = (data.response.players || [])[0];
-      if (!p) return json({ error: "not_found" }, 404, origin);
+      if (p === undefined) return json({ error: "not_found" }, 404, origin);
+      if (!validPlayer(p)) return json({ error: "upstream_error" }, 502, origin);
       return json({ steamid: p.steamid, persona: p.personaname, avatar: p.avatarfull, profileurl: p.profileurl }, 200, origin);
     }
 
