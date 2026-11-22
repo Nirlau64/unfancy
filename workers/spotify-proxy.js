@@ -61,13 +61,31 @@ async function rateLimit(request) {
 /**
  * Holt einen Spotify Access Token, gecached für 55 Minuten (3300s).
  */
-async function getAccessToken(env, ctx, forceRefresh = false) {
+async function exchangeRefreshToken(env, refreshToken) {
+  const resp = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: 'Basic ' + btoa(env.SPOTIFY_CLIENT_ID + ':' + env.SPOTIFY_CLIENT_SECRET),
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+  });
+  if (!resp.ok) return { error: true, status: resp.status };
+  const body = await resp.json();
+  if (!body?.access_token) return { error: true, status: resp.status };
+  return { error: false, token: body.access_token };
+}
+
+async function getAccessToken(env, ctx) {
   // Key is versioned per source revision so a deploy always starts with a cold
   // token cache: the first request after a deploy provably exercises the KV
   // refresh-token path.
   const CACHE_KEY = 'https://spotify-token-cache.local/access_token/v2';
 
-  if (!forceRefresh) {
+  {
     const cached = await caches.default.match(CACHE_KEY);
     if (cached) {
       const data = await cached.json();
@@ -77,24 +95,9 @@ async function getAccessToken(env, ctx, forceRefresh = false) {
     }
   }
 
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: 'Basic ' + btoa(env.SPOTIFY_CLIENT_ID + ':' + env.SPOTIFY_CLIENT_SECRET),
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: await env.TOKENS.get('spotify:refresh_token'),
-    }),
-  });
-
-  if (!resp.ok) {
-    return { error: true, status: resp.status };
-  }
-
-  const body = await resp.json();
-  const token = body.access_token;
+  const result = await exchangeRefreshToken(env, await env.TOKENS.get('spotify:refresh_token'));
+  if (result.error) return result;
+  const token = result.token;
 
   const cacheResp = new Response(JSON.stringify({
     token,
@@ -132,10 +135,22 @@ async function fetchSpotify(url, token, ctx, cacheTtl = 0) {
 
 export default {
   async fetch(request, env, ctx) {
+    try {
+      return await handleRequest(request, env, ctx);
+    } catch {
+      // Any unexpected failure (e.g. KV read rejected) answers in a controlled way.
+      return json({ error: 'Internal error' }, 500, null);
+    }
+  },
+};
+
+async function handleRequest(request, env, ctx) {
     const origin = allowedOrigin(request);
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      const headers = corsHeaders(origin);
+      headers['Cache-Control'] = 'no-store';
+      return new Response(null, { status: 204, headers });
     }
     if (request.method !== 'GET') {
       return json({ error: 'Method not allowed' }, 405, origin);
@@ -160,14 +175,29 @@ export default {
     // Diagnostic endpoint: forces a fresh access-token exchange (bypasses the
     // token cache) and reports success without ever returning token material.
     // Proves the KV refresh-token path is intact before/after binding changes.
-    // Hardened: requires the KV refresh token to be present, always no-store,
-    // and is scheduled for removal after binding-change verification.
+    // Hardened: gated by a secret diagnostic token header, requires the KV
+    // refresh token to be present, always no-store; scheduled for removal in a
+    // follow-up deploy after binding-change verification.
     if (url.pathname === '/refresh-check') {
-      const refreshToken = await env.TOKENS.get('spotify:refresh_token');
+      if (!env.DIAG_TOKEN || request.headers.get('x-diag-token') !== env.DIAG_TOKEN) {
+        return json({ error: 'Not found' }, 404, origin);
+      }
+      let refreshToken;
+      try {
+        refreshToken = await env.TOKENS.get('spotify:refresh_token');
+      } catch {
+        return json({ ok: false, error: 'kv read failed' }, 502, origin);
+      }
       if (!refreshToken) {
         return json({ ok: false, error: 'no refresh token in KV' }, 502, origin);
       }
-      const tokenResp = await getAccessToken(env, ctx, true);
+      // Exactly one KV read; the exchange uses exactly this value.
+      let tokenResp;
+      try {
+        tokenResp = await exchangeRefreshToken(env, refreshToken);
+      } catch {
+        return json({ ok: false, error: 'token exchange failed' }, 502, origin);
+      }
       if (tokenResp.error || !tokenResp.token) {
         return json({ ok: false, error: 'token exchange failed' }, 502, origin);
       }
@@ -195,5 +225,4 @@ export default {
     }
 
     return json({ error: 'Invalid endpoint. Use /now-playing, /top-artists, or /top-tracks' }, 404, origin);
-  },
-};
+}

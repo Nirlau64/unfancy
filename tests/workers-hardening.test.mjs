@@ -102,7 +102,13 @@ test('spotify-proxy: only GET and OPTIONS are allowed', async () => {
 
 test('spotify-proxy: invalid range is rejected without an upstream call', async () => {
     let upstreamCalls = 0;
-    globalThis.fetch = async () => { upstreamCalls++; return new Response('{}', { status: 200 }); };
+    globalThis.fetch = async (url) => {
+        if (String(url).includes('accounts.spotify.com/api/token')) {
+            return new Response(JSON.stringify({ access_token: 'at' }), { status: 200 });
+        }
+        upstreamCalls++;
+        return new Response('{}', { status: 200 });
+    };
     try {
         const res = await spotify.default.fetch(req('/top-tracks?range=DROP TABLE'), spotifyEnv, ctx);
         assert.equal(res.status, 400);
@@ -199,6 +205,7 @@ test('spotify-proxy /refresh-check forces a fresh KV-backed token exchange', asy
     const spotifyEnvProbe = {
         SPOTIFY_CLIENT_ID: 'id',
         SPOTIFY_CLIENT_SECRET: 'secret',
+        DIAG_TOKEN: 'diag-secret',
         TOKENS: {
             get: async () => { kvRead = true; return 'refresh-token'; },
         },
@@ -210,13 +217,20 @@ test('spotify-proxy /refresh-check forces a fresh KV-backed token exchange', asy
         return new Response('{}', { status: 200 });
     };
     try {
-        const res = await spotify.default.fetch(req('/refresh-check'), spotifyEnvProbe, ctx);
+        const diagReq = new Request(`${BASE}/refresh-check`, {
+            headers: new Headers({ 'x-diag-token': 'diag-secret', 'CF-Connecting-IP': '203.0.113.7' }),
+        });
+        const res = await spotify.default.fetch(diagReq, spotifyEnvProbe, ctx);
         assert.equal(res.status, 200);
         const body = await res.json();
         assert.deepEqual(body, { ok: true, source: 'kv' });
         assert.ok(kvRead, 'refresh-check performed a real KV read');
+        assert.equal(res.headers.get('Cache-Control'), 'no-store');
         // No token material in the response.
         assert.ok(!JSON.stringify(body).includes('fresh'));
+        // Without the diagnostic token the endpoint is inert.
+        const unauth = await spotify.default.fetch(req('/refresh-check'), spotifyEnvProbe, ctx);
+        assert.equal(unauth.status, 404);
     } finally {
         delete globalThis.fetch;
         globalThis.caches = makeCache();
