@@ -1,4 +1,4 @@
-const CACHE_NAME = 'unfancy-v5';
+const CACHE_NAME = 'unfancy-v6';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -16,7 +16,10 @@ const STATIC_ASSETS = [
     '/js/views/socials.js',
     // Page fragments are warmed after the first render instead of during install.
     '/404.html',
-    '/assets/favicon.png',
+    '/assets/favicon-32.png',
+    '/assets/apple-touch-icon.png',
+    '/assets/icon-192.png',
+    '/assets/icon-512.png',
     'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap'
 ];
 

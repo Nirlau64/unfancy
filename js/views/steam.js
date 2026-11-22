@@ -7,25 +7,43 @@ import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError, g
 /**
  * Dynamically loads Chart.js only when needed (~200KB).
  */
+const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js';
+const CHART_LOAD_TIMEOUT_MS = 10000;
+let chartLoadPromise = null;
+let chartGeneration = 0;
+let steamChartInstance = null;
+
 async function loadChartJS() {
     if (window.Chart) return;
-    await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-    });
+    if (!chartLoadPromise) {
+        chartLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            const timeoutId = window.setTimeout(() => {
+                script.remove();
+                reject(new Error('Chart.js Ladezeit überschritten'));
+            }, CHART_LOAD_TIMEOUT_MS);
+            script.src = CHART_JS_URL;
+            script.onload = () => { window.clearTimeout(timeoutId); resolve(); };
+            script.onerror = () => {
+                window.clearTimeout(timeoutId);
+                script.remove();
+                reject(new Error('Chart.js konnte nicht geladen werden'));
+            };
+            document.head.appendChild(script);
+        }).finally(() => {
+            chartLoadPromise = null;
+        });
+    }
+    await chartLoadPromise;
+    if (!window.Chart) throw new Error('Chart.js wurde ohne Chart-API geladen');
 }
-
-let steamChartInstance = null;
 
 /**
  * Cleans up resources like Chart.js instances.
  */
 export function cleanupSteam() {
+    chartGeneration++;
     if (steamChartInstance) {
-        console.log('Cleaning up Steam Chart instance');
         steamChartInstance.destroy();
         steamChartInstance = null;
     }
@@ -280,21 +298,23 @@ function renderSteamStats(container, owned, achievementsRes, fetchTime) {
 async function renderChart(sortedGames, totalMins) {
     const chartCanvas = document.getElementById('steam-chart');
     if (!chartCanvas) return;
+    const generation = ++chartGeneration;
 
     try {
         await loadChartJS();
     } catch (e) {
-        console.error('Chart.js konnte nicht geladen werden:', e);
+        if (generation === chartGeneration) console.error('Chart.js konnte nicht geladen werden:', e);
         return;
     }
 
+    // Navigation or a newer render may have happened while the CDN request was pending.
+    if (generation !== chartGeneration || !chartCanvas.isConnected || document.getElementById('steam-chart') !== chartCanvas) return;
     if (steamChartInstance) steamChartInstance.destroy();
 
     const top10 = sortedGames.slice(0, 10);
     const top10Mins = top10.reduce((s, g) => s + g.playtime_minutes, 0);
 
-    const ctx = chartCanvas.getContext('2d');
-    steamChartInstance = new Chart(ctx, {
+    steamChartInstance = new window.Chart(chartCanvas.getContext('2d'), {
         type: 'pie',
         data: {
             labels: [...top10.map(g => g.name), 'Andere'],
