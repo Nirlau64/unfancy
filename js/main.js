@@ -28,8 +28,15 @@ function triggerPageLogic(pageName, signal = null) {
         currentPageCleanup = null;
     }
 
-    // Reset page title (in case it was changed by Spotify Live Status)
-    document.title = 'Unfancy - Dashboard';
+    // Reset page title (in case it was changed by Spotify Live Status), but keep
+    // the unique per-page titles that also power the static deep-link routes.
+    document.title = {
+        home: 'Unfancy - Dashboard',
+        steam: 'Unfancy - Steam Statistiken',
+        spotify: 'Unfancy - Spotify',
+        lol: 'Unfancy - League of Legends',
+        socials: 'Unfancy - Socials'
+    }[pageName] || 'Unfancy - Dashboard';
 
     switch (pageName) {
         case 'home':
@@ -144,22 +151,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup mobile swipe navigation
     setupSwipeNavigation((pageName) => loadPage(pageName, true, triggerPageLogic));
 
-    // Pre-cache the inline home content so returning to home is instant
-    const contentDiv = document.getElementById('app-content');
-    if (contentDiv) {
-        preCachePage('home', contentDiv.innerHTML);
-    }
-
-    // Determine initial page from URL (?page= param or default to home)
+    // Determine the initial page from the URL (static deep-link route,
+    // ?page= param or default to home) BEFORE caching anything: the inline
+    // <main> content only belongs to 'home' when home is actually the
+    // initial route. On /steam/ the inline content is the Steam fragment and
+    // must never be cached under the 'home' key.
     const requestedPage = getPageFromURL();
 
-    if (requestedPage !== 'home') {
-        // User arrived via redirect stub (e.g. ?page=steam) — load that page
-        loadPage(requestedPage, false, triggerPageLogic).finally(schedulePagePrefetch);
-    } else {
-        // Home content is already inline — just trigger its JS logic
+    if (requestedPage === 'home') {
+        const contentDiv = document.getElementById('app-content');
+        if (contentDiv) {
+            // Pre-cache the inline home content so returning to home is instant
+            preCachePage('home', contentDiv.innerHTML);
+        }
         triggerPageLogic('home');
         schedulePagePrefetch();
+    } else {
+        // User arrived via a static deep-link route or a redirect stub
+        // (e.g. /steam/ or ?page=steam) — load that page.
+        loadPage(requestedPage, false, triggerPageLogic).finally(schedulePagePrefetch);
     }
 
     // Live Status Auto-Refresh (Home only)

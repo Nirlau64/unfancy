@@ -8,16 +8,26 @@ import { renderError } from './utils.js';
  * Maps page names to their fragment file paths.
  */
 const PAGE_MAP = {
-    home: 'pages/home.html',
-    steam: 'pages/steam.html',
-    spotify: 'pages/spotify.html',
-    lol: 'pages/lol.html',
-    socials: 'pages/socials.html'
+    home: '/pages/home.html',
+    steam: '/pages/steam.html',
+    spotify: '/pages/spotify.html',
+    lol: '/pages/lol.html',
+    socials: '/pages/socials.html'
 };
 
 const pageCache = new Map();
 const pageFetches = new Map();
 let currentAbortController = null;
+
+// Clean public paths for the statically generated route pages. New history
+// entries use these; the legacy `?page=` routes keep working because
+// getPageFromURL() accepts both forms.
+const CLEAN_PATHS = {
+    steam: '/steam/',
+    spotify: '/spotify/',
+    lol: '/lol/',
+    socials: '/socials/'
+};
 
 // A shared fragment fetch may finish after navigation changes, warming the cache for reuse.
 function getPageHTML(pageName) {
@@ -85,7 +95,9 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
         contentDiv.innerHTML = newContentHTML;
 
         if (pushState) {
-            const url = pageName === 'home' ? '/' : `/?page=${pageName}`;
+            // Clean paths for the generated static routes, '/' for home.
+            // Legacy ?page= URLs remain valid entry points via getPageFromURL.
+            const url = pageName === 'home' ? '/' : (CLEAN_PATHS[pageName] || `/?page=${pageName}`);
             window.history.pushState({ page: pageName }, '', url);
         }
 
@@ -140,6 +152,12 @@ export async function preloadPageFragments() {
  * @returns {string} The page name (defaults to 'home')
  */
 export function getPageFromURL() {
+    // Static deep-link routes (e.g. /steam/) take precedence over the query param.
+    const pathPage = window.location.pathname
+        .replace(/^\/+|\/+$/g, '');
+    if (PAGE_MAP[pathPage]) {
+        return pathPage;
+    }
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
     return (page && PAGE_MAP[page]) ? page : 'home';

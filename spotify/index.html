@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' www.instagram.com connect.facebook.net platform.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com;">
+    <meta name="theme-color" content="#0b0e0f">
+    <meta name="description" content="Aktuell gehörte Musik, Top-Künstler und Top-Titel auf Spotify.">
+    <meta property="og:title" content="Unfancy - Spotify">
+    <meta property="og:description" content="Aktuell gehörte Musik, Top-Künstler und Top-Titel auf Spotify.">
+    <meta property="og:image" content="https://nirlau.de/assets/icon-512.png">
+    <meta property="og:url" content="https://nirlau.de/spotify/">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Unfancy - Spotify">
+    <meta name="twitter:description" content="Aktuell gehörte Musik, Top-Künstler und Top-Titel auf Spotify.">
+    <meta name="twitter:image" content="https://nirlau.de/assets/icon-512.png">
+    <link rel="canonical" href="https://nirlau.de/spotify/">
+    <title>Unfancy - Spotify</title>
+
+    <!-- PWA & iOS Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="icon" type="image/png" href="/assets/favicon-64.png">
+</head>
+<body data-static-page="spotify">
+
+    <div class="main-card">
+        <header class="site-header">
+            <h1>Unfancy</h1>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav-tabs" id="nav-tabs">
+            <a href="/" class="nav-link active" data-page="home">Home</a>
+            <a href="/steam/" class="nav-link" data-page="steam">Steam</a>
+            <a href="/spotify/" class="nav-link" data-page="spotify">Spotify</a>
+            <a href="/lol/" class="nav-link" data-page="lol">League of Legends</a>
+            <a href="/socials/" class="nav-link" data-page="socials">Socials</a>
+        </nav>
+
+        <!-- Dieser Container wird ausgetauscht -->
+        <main id="app-content">
+<div id="spotify" class="tab-content active">
+    <div class="time-range-buttons">
+        <button data-range="short_term">4 Wochen</button>
+        <button data-range="medium_term" class="active">6 Monate</button>
+        <button data-range="long_term">Insgesamt</button>
+    </div>
+
+    <div class="section" id="spotify-now-playing"></div>
+
+    <div class="section" id="spotify-artists">
+        <h2>Meine Top Künstler</h2>
+        <div class="text-center text-muted" aria-live="polite">Lade Daten...</div>
+    </div>
+
+    <div class="section" id="spotify-tracks">
+        <h2>Meine Top Titel</h2>
+        <div class="text-center text-muted" aria-live="polite">Lade Daten...</div>
+    </div>
+</div>
+        </main>
+
+    </div>
+
+    <footer><p><span id="footer-year"></span> Unfancy - Laurin</p></footer>
+
+    <!-- Core App Logic & Router (ES6 Module) -->
+    <script type="module" src="/js/main.js"></script>
+</body>
+</html>
