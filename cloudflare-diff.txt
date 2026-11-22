@@ -1,0 +1,321 @@
+diff --git a/_headers b/_headers
+new file mode 100644
+index 0000000..5ebf9bc
+--- /dev/null
++++ b/_headers
+@@ -0,0 +1,3 @@
++/*
++  Strict-Transport-Security: max-age=15552000
++  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' cdn.jsdelivr.net www.instagram.com connect.facebook.net platform.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com cdn.jsdelivr.net;
+diff --git a/index.html b/index.html
+index 4d0eb4b..154b33b 100644
+--- a/index.html
++++ b/index.html
+@@ -3,7 +3,6 @@
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net www.instagram.com connect.facebook.net platform.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com cdn.jsdelivr.net;">
+     <meta name="theme-color" content="#0b0e0f">
+     <meta name="description" content="Steam, Spotify, League of Legends und Socials.">
+     <meta property="og:title" content="Unfancy Dashboard">
+diff --git a/tests/edge-headers.test.mjs b/tests/edge-headers.test.mjs
+new file mode 100644
+index 0000000..b9343d6
+--- /dev/null
++++ b/tests/edge-headers.test.mjs
+@@ -0,0 +1,28 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFile } from 'node:fs/promises';
++
++const headersConfig = await readFile(new URL('../_headers', import.meta.url), 'utf8');
++
++function headerValue(name) {
++  const line = headersConfig.split(/\r?\n/).map((entry) => entry.trim()).find((entry) => entry.startsWith(`${name}: `));
++  assert.ok(line, `${name} must be configured in Cloudflare Pages _headers`);
++  return line.slice(name.length + 2);
++}
++
++test('edge HSTS is set to the approved six-month value only', () => {
++  assert.equal(headerValue('Strict-Transport-Security'), 'max-age=15552000');
++  assert.doesNotMatch(headersConfig, /includeSubDomains|\bpreload\b/i);
++});
++
++test('CSP is report-only and retains the current policy directives', async () => {
++  const csp = headerValue('Content-Security-Policy-Report-Only');
++  assert.match(csp, /(?:^|;\s*)default-src 'self'/);
++  assert.match(csp, /script-src 'self'/);
++  assert.match(csp, /connect-src 'self'/);
++  assert.doesNotMatch(headersConfig, /^Content-Security-Policy:/m);
++
++  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
++  assert.doesNotMatch(html, /http-equiv=["']Content-Security-Policy["']/i,
++    'an enforcing CSP meta tag would defeat report-only rollout');
++});
+diff --git a/tests/invocation-logging.test.mjs b/tests/invocation-logging.test.mjs
+new file mode 100644
+index 0000000..3c05b43
+--- /dev/null
++++ b/tests/invocation-logging.test.mjs
+@@ -0,0 +1,36 @@
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { readFile } from 'node:fs/promises';
++import { logInvocation, redactPath } from '../workers/invocation-logging.js';
++
++ test('redacts sensitive query values without changing safe parameters', () => {
++  const result = redactPath('https://worker.example/callback?token=TOPSECRET&api_key=KEYSECRET&range=short&state=STATESECRET');
++  assert.equal(result, '/callback?token=%5BREDACTED%5D&api_key=%5BREDACTED%5D&range=short&state=%5BREDACTED%5D');
++  assert.doesNotMatch(result, /TOPSECRET|KEYSECRET|STATESECRET/);
++});
++
++test('logs invocation metadata and never logs query secrets', async () => {
++  const lines = [];
++  const original = console.log;
++  console.log = (line) => lines.push(line);
++  try {
++    const response = await logInvocation(new Request('https://worker.example/a?key=VERYSECRET'), async () => new Response('ok', { status: 201 }));
++    assert.equal(response.status, 201);
++  } finally {
++    console.log = original;
++  }
++  assert.equal(lines.length, 1);
++  const record = JSON.parse(lines[0]);
++  assert.equal(record.method, 'GET');
++  assert.equal(record.path, '/a?key=%5BREDACTED%5D');
++  assert.equal(record.status, 201);
++  assert.equal(typeof record.timestamp, 'string');
++  assert.equal(typeof record.durationMs, 'number');
++  assert.doesNotMatch(lines[0], /VERYSECRET/);
++});
++
++test('logging configuration sets 30-day retention', async () => {
++  const config = JSON.parse(await readFile(new URL('../workers/logging.config.json', import.meta.url), 'utf8'));
++  assert.equal(config.retentionDays, 30);
++  assert.ok(config.redactedQueryParameters.includes('api_key'));
++});
+diff --git a/tests/workers-hardening.test.mjs b/tests/workers-hardening.test.mjs
+index 4f4b0a6..2e6fa65 100644
+--- a/tests/workers-hardening.test.mjs
++++ b/tests/workers-hardening.test.mjs
+@@ -47,14 +47,24 @@ const authEnv = {
+     },
+ };
+ 
+-test('spotify-auth rejects disallowed hosts for /setup and /callback', async () => {
+-    const res = await auth.default.fetch(new Request('https://evil.example/setup'), authEnv);
+-    assert.equal(res.status, 403);
+-    const resCb = await auth.default.fetch(new Request('https://evil.example/callback?code=x&state=y'), authEnv);
+-    assert.equal(resCb.status, 403);
++test('spotify-auth accepts only the exact allowlisted HTTPS host', async () => {
++    for (const host of [
++        'evil.example',
++        'spotify-auth.nirlau.de.evil.example',
++        'not-spotify-auth.nirlau.de',
++        'sub.spotify-auth.nirlau.de',
++        'spotify-auth.nirlau.de:444',
++    ]) {
++        const res = await auth.default.fetch(new Request(`https://${host}/setup`), authEnv);
++        assert.equal(res.status, 403, `reject ${host}`);
++    }
++    const callbackHost = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de.evil.example/callback?code=x&state=y'), authEnv);
++    assert.equal(callbackHost.status, 403, 'callback rejects a suffix host');
++    const http = await auth.default.fetch(new Request('http://spotify-auth.nirlau.de/setup'), authEnv);
++    assert.equal(http.status, 403, 'reject insecure scheme');
+ });
+ 
+-test('spotify-auth uses a fixed redirect URI and one-time state consume', async () => {
++test('spotify-auth uses one constant production callback URL and consumes state once', async () => {
+     globalThis.fetch = async (url) => new Response(JSON.stringify({ refresh_token: 'rt', access_token: 'at' }), { status: 200 });
+     try {
+         const first = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer test-setup-token' } }), authEnv);
+@@ -350,6 +360,20 @@ test('steam-proxy: empty or missing upstream payload is not treated as success',
+     }
+ });
+ 
++test('steam-proxy rejects paths outside the exact route allowlist', async () => {
++    let upstreamCalls = 0;
++    globalThis.fetch = async () => { upstreamCalls++; return new Response('{}', { status: 200 }); };
++    try {
++        for (const path of ['/profile/extra', '/profile/', '/profile/anything/else']) {
++            const res = await steam.default.fetch(req(`${path}?steamid=${steamid}`), steamEnv);
++            assert.equal(res.status, 404, `${path} rejected`);
++        }
++        assert.equal(upstreamCalls, 0);
++    } finally {
++        delete globalThis.fetch;
++    }
++});
++
+ test('steam-proxy: only GET and OPTIONS are allowed, CORS is allowlisted', async () => {
+     const post = await steam.default.fetch(req(`/owned?steamid=${steamid}`, { method: 'POST' }), steamEnv);
+     assert.equal(post.status, 405);
+diff --git a/workers/invocation-logging.js b/workers/invocation-logging.js
+new file mode 100644
+index 0000000..6dd356b
+--- /dev/null
++++ b/workers/invocation-logging.js
+@@ -0,0 +1,27 @@
++const SENSITIVE_QUERY_KEYS = /^(?:token|key|secret|api[_-]?key|authorization|code|state|client[_-]?secret|access[_-]?token|refresh[_-]?token)$/i;
++
++export function redactPath(input) {
++  const url = new URL(input);
++  for (const key of [...url.searchParams.keys()]) {
++    if (SENSITIVE_QUERY_KEYS.test(key)) url.searchParams.set(key, '[REDACTED]');
++  }
++  return `${url.pathname}${url.search}`;
++}
++
++export async function logInvocation(request, handler) {
++  const started = Date.now();
++  let status = 500;
++  try {
++    const response = await handler();
++    status = response.status;
++    return response;
++  } finally {
++    console.log(JSON.stringify({
++      timestamp: new Date().toISOString(),
++      method: request.method,
++      path: redactPath(request.url),
++      status,
++      durationMs: Math.max(0, Date.now() - started),
++    }));
++  }
++}
+diff --git a/workers/logging.config.json b/workers/logging.config.json
+new file mode 100644
+index 0000000..a6daf79
+--- /dev/null
++++ b/workers/logging.config.json
+@@ -0,0 +1,4 @@
++{
++  "retentionDays": 30,
++  "redactedQueryParameters": ["token", "key", "secret", "api_key", "authorization", "code", "state", "client_secret", "access_token", "refresh_token"]
++}
+diff --git a/workers/riot-proxy.js b/workers/riot-proxy.js
+index 5769c96..962eca7 100644
+--- a/workers/riot-proxy.js
++++ b/workers/riot-proxy.js
+@@ -1,3 +1,4 @@
++import { logInvocation } from './invocation-logging.js';
+ // Hardened Riot proxy (nirlau.de/api.nirlau.de). Logic mirrors the live worker;
+ // hardening: method allowlist, CORS only for allowlisted origins, strict input
+ // validation, per-IP rate limiting and no upstream calls for invalid input.
+@@ -169,6 +170,9 @@ async function passthrough(where, resp, origin) {
+ 
+ export default {
+   async fetch(req, env, ctx) {
++    return logInvocation(req, () => this._fetch(req, env, ctx));
++  },
++  async _fetch(req, env, ctx) {
+     const origin = allowedOrigin(req);
+ 
+     if (req.method === "OPTIONS") {
+diff --git a/workers/spotify-auth.js b/workers/spotify-auth.js
+index 86dbb6a..7c7aec0 100644
+--- a/workers/spotify-auth.js
++++ b/workers/spotify-auth.js
+@@ -1,3 +1,4 @@
++import { logInvocation } from './invocation-logging.js';
+ const SPOTIFY_AUTHORIZE = 'https://accounts.spotify.com/authorize';
+ const SPOTIFY_TOKEN = 'https://accounts.spotify.com/api/token';
+ const SCOPES = 'user-read-currently-playing user-top-read';
+@@ -5,9 +6,9 @@ const STATE_TTL_SECONDS = 600;
+ const REFRESH_TOKEN_KEY = 'spotify:refresh_token';
+ const ISSUED_AT_KEY = 'spotify:authorized_at';
+ 
+-// The OAuth host is pinned; redirect URIs and accepted origins must never be
+-// derived from attacker-controlled request data.
+-const ALLOWED_ORIGINS = ['https://spotify-auth.nirlau.de'];
++// Match the parsed hostname exactly; never use suffix/prefix or wildcard checks.
++const ALLOWED_HOSTS = new Set(['spotify-auth.nirlau.de']);
++const CALLBACK_URL = 'https://spotify-auth.nirlau.de/callback';
+ 
+ function html(body, status = 200) {
+   return new Response(`<!doctype html><meta charset="utf-8"><title>Spotify-Verbindung</title><main style="font-family:system-ui;max-width:42rem;margin:4rem auto;padding:1rem;background:#111;color:#eee">${body}</main>`, {
+@@ -17,12 +18,12 @@ function html(body, status = 200) {
+ }
+ 
+ function redirectUri() {
+-  return `${ALLOWED_ORIGINS[0]}/callback`;
++  return CALLBACK_URL;
+ }
+ 
+ function originAllowed(request) {
+-  const origin = new URL(request.url).origin;
+-  return ALLOWED_ORIGINS.includes(origin);
++  const url = new URL(request.url);
++  return url.protocol === 'https:' && ALLOWED_HOSTS.has(url.host);
+ }
+ 
+ function randomState() {
+@@ -138,6 +139,9 @@ function timingSafeEqual(a, b) {
+ 
+ export default {
+   async fetch(request, env) {
++    return logInvocation(request, () => this._fetch(request, env));
++  },
++  async _fetch(request, env) {
+     const url = new URL(request.url);
+     if (url.pathname === '/setup') return setupPage(request, env);
+     if (url.pathname === '/callback' && request.method === 'GET') return callback(request, env);
+diff --git a/workers/spotify-proxy.js b/workers/spotify-proxy.js
+index 315bda6..6612e2f 100644
+--- a/workers/spotify-proxy.js
++++ b/workers/spotify-proxy.js
+@@ -1,3 +1,4 @@
++import { logInvocation } from './invocation-logging.js';
+ const ALLOWED_ORIGINS = ['https://nirlau.de', 'https://www.nirlau.de'];
+ 
+ const TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
+@@ -139,6 +140,9 @@ async function fetchSpotify(url, token, ctx, cacheTtl = 0) {
+ 
+ export default {
+   async fetch(request, env, ctx) {
++    return logInvocation(request, () => this._fetch(request, env, ctx));
++  },
++  async _fetch(request, env, ctx) {
+     try {
+       return await handleRequest(request, env, ctx);
+     } catch {
+diff --git a/workers/steam-proxy.js b/workers/steam-proxy.js
+index cde7eae..9cfee4a 100644
+--- a/workers/steam-proxy.js
++++ b/workers/steam-proxy.js
+@@ -1,3 +1,4 @@
++import { logInvocation } from './invocation-logging.js';
+ const STEAM = "https://api.steampowered.com";
+ const ALLOWED_ORIGINS = ['https://nirlau.de', 'https://www.nirlau.de'];
+ 
+@@ -88,14 +89,16 @@ async function handle(req, env) {
+   const [seg] = u.pathname.split("/").filter(Boolean);
+   const steamid = u.searchParams.get("steamid");
+ 
++  // Match the complete path, not just its first segment; otherwise appended
++  // path components silently alias a valid API route.
++  if (!ROUTES.has(seg) || u.pathname !== `/${seg}`) {
++    return json({ error: "Not found" }, 404, origin);
++  }
+   // Validate route and input BEFORE the rate limiter: invalid requests are
+   // answered directly and must not create limiter buckets.
+   if (!STEAMID_PATTERN.test(steamid || "")) {
+     return json({ error: "Valid steamid (SteamID64) required" }, 400, origin);
+   }
+-  if (!ROUTES.has(seg)) {
+-    return json({ error: "Not found" }, 404, origin);
+-  }
+   if (!(await rateLimit(req))) {
+     return json({ error: "Too many requests" }, 429, origin);
+   }
+@@ -193,6 +196,9 @@ async function handle(req, env) {
+ 
+ export default {
+   async fetch(req, env) {
++    return logInvocation(req, () => this._fetch(req, env));
++  },
++  async _fetch(req, env) {
+     return handle(req, env);
+   }
+ };
