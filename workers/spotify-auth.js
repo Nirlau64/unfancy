@@ -5,9 +5,9 @@ const STATE_TTL_SECONDS = 600;
 const REFRESH_TOKEN_KEY = 'spotify:refresh_token';
 const ISSUED_AT_KEY = 'spotify:authorized_at';
 
-// The OAuth host is pinned; redirect URIs and accepted origins must never be
-// derived from attacker-controlled request data.
-const ALLOWED_ORIGINS = ['https://spotify-auth.nirlau.de'];
+// Match the parsed hostname exactly; never use suffix/prefix or wildcard checks.
+const ALLOWED_HOSTS = new Set(['spotify-auth.nirlau.de']);
+const CALLBACK_URL = 'https://spotify-auth.nirlau.de/callback';
 
 function html(body, status = 200) {
   return new Response(`<!doctype html><meta charset="utf-8"><title>Spotify-Verbindung</title><main style="font-family:system-ui;max-width:42rem;margin:4rem auto;padding:1rem;background:#111;color:#eee">${body}</main>`, {
@@ -17,12 +17,12 @@ function html(body, status = 200) {
 }
 
 function redirectUri() {
-  return `${ALLOWED_ORIGINS[0]}/callback`;
+  return CALLBACK_URL;
 }
 
 function originAllowed(request) {
-  const origin = new URL(request.url).origin;
-  return ALLOWED_ORIGINS.includes(origin);
+  const url = new URL(request.url);
+  return url.protocol === 'https:' && ALLOWED_HOSTS.has(url.host);
 }
 
 function randomState() {

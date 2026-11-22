@@ -47,14 +47,24 @@ const authEnv = {
     },
 };
 
-test('spotify-auth rejects disallowed hosts for /setup and /callback', async () => {
-    const res = await auth.default.fetch(new Request('https://evil.example/setup'), authEnv);
-    assert.equal(res.status, 403);
-    const resCb = await auth.default.fetch(new Request('https://evil.example/callback?code=x&state=y'), authEnv);
-    assert.equal(resCb.status, 403);
+test('spotify-auth accepts only the exact allowlisted HTTPS host', async () => {
+    for (const host of [
+        'evil.example',
+        'spotify-auth.nirlau.de.evil.example',
+        'not-spotify-auth.nirlau.de',
+        'sub.spotify-auth.nirlau.de',
+        'spotify-auth.nirlau.de:444',
+    ]) {
+        const res = await auth.default.fetch(new Request(`https://${host}/setup`), authEnv);
+        assert.equal(res.status, 403, `reject ${host}`);
+    }
+    const callbackHost = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de.evil.example/callback?code=x&state=y'), authEnv);
+    assert.equal(callbackHost.status, 403, 'callback rejects a suffix host');
+    const http = await auth.default.fetch(new Request('http://spotify-auth.nirlau.de/setup'), authEnv);
+    assert.equal(http.status, 403, 'reject insecure scheme');
 });
 
-test('spotify-auth uses a fixed redirect URI and one-time state consume', async () => {
+test('spotify-auth uses one constant production callback URL and consumes state once', async () => {
     globalThis.fetch = async (url) => new Response(JSON.stringify({ refresh_token: 'rt', access_token: 'at' }), { status: 200 });
     try {
         const first = await auth.default.fetch(new Request('https://spotify-auth.nirlau.de/setup', { headers: { authorization: 'Bearer test-setup-token' } }), authEnv);
