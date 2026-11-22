@@ -88,13 +88,15 @@ async function handle(req, env) {
   const [seg] = u.pathname.split("/").filter(Boolean);
   const steamid = u.searchParams.get("steamid");
 
+  // Match the complete path, not just its first segment; otherwise appended
+  // path components silently alias a valid API route.
+  if (!ROUTES.has(seg) || u.pathname !== `/${seg}`) {
+    return json({ error: "Not found" }, 404, origin);
+  }
   // Validate route and input BEFORE the rate limiter: invalid requests are
   // answered directly and must not create limiter buckets.
   if (!STEAMID_PATTERN.test(steamid || "")) {
     return json({ error: "Valid steamid (SteamID64) required" }, 400, origin);
-  }
-  if (!ROUTES.has(seg)) {
-    return json({ error: "Not found" }, 404, origin);
   }
   if (!(await rateLimit(req))) {
     return json({ error: "Too many requests" }, 429, origin);

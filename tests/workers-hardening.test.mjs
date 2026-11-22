@@ -350,6 +350,20 @@ test('steam-proxy: empty or missing upstream payload is not treated as success',
     }
 });
 
+test('steam-proxy rejects paths outside the exact route allowlist', async () => {
+    let upstreamCalls = 0;
+    globalThis.fetch = async () => { upstreamCalls++; return new Response('{}', { status: 200 }); };
+    try {
+        for (const path of ['/profile/extra', '/profile/', '/profile/anything/else']) {
+            const res = await steam.default.fetch(req(`${path}?steamid=${steamid}`), steamEnv);
+            assert.equal(res.status, 404, `${path} rejected`);
+        }
+        assert.equal(upstreamCalls, 0);
+    } finally {
+        delete globalThis.fetch;
+    }
+});
+
 test('steam-proxy: only GET and OPTIONS are allowed, CORS is allowlisted', async () => {
     const post = await steam.default.fetch(req(`/owned?steamid=${steamid}`, { method: 'POST' }), steamEnv);
     assert.equal(post.status, 405);
