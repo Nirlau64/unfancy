@@ -152,6 +152,77 @@ test('error and rate-limit responses are not cacheable', async () => {
     assert.equal(riot404.headers.get('Cache-Control'), 'no-store');
 });
 
+test('rate limiter is fail-open when the cache backend fails', async () => {
+    globalThis.caches = {
+        default: {
+            match: async () => undefined,
+            put: async () => { throw new Error('cache down'); },
+        },
+    };
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    try {
+        const res = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        assert.ok(res.status !== 429, 'request is served despite cache failure');
+        const riotRes = await riot.default.fetch(rreq('/'), riotEnv);
+        assert.ok(riotRes.status !== 429, 'riot request is served despite cache failure');
+    } finally {
+        delete globalThis.fetch;
+        globalThis.caches = makeCache();
+    }
+});
+
+test('429 responses carry Cache-Control: no-store', async () => {
+    globalThis.caches = makeCache();
+    globalThis.fetch = async () => new Response('{}', { status: 200 });
+    try {
+        let last = null;
+        for (let i = 0; i < 31; i++) {
+            last = await steam.default.fetch(req(`/profile?steamid=${steamid}`), steamEnv);
+        }
+        assert.equal(last.headers.get('Cache-Control'), 'no-store');
+    } finally {
+        delete globalThis.fetch;
+        globalThis.caches = makeCache();
+    }
+});
+
+test('spotify-proxy /refresh-check forces a fresh KV-backed token exchange', async () => {
+    globalThis.caches = makeCache();
+    // Pre-warm the v2 cache: refresh-check must ignore it.
+    await caches.default.put(
+        new Request('https://spotify-token-cache.local/access_token/v2'),
+        new Response(JSON.stringify({ token: 'cached-token', expires_at: Date.now() + 999999 }), {
+            headers: { 'Cache-Control': 'public, max-age=3300' }
+        })
+    );
+    let kvRead = false;
+    const spotifyEnvProbe = {
+        SPOTIFY_CLIENT_ID: 'id',
+        SPOTIFY_CLIENT_SECRET: 'secret',
+        TOKENS: {
+            get: async () => { kvRead = true; return 'refresh-token'; },
+        },
+    };
+    globalThis.fetch = async (url, init) => {
+        if (String(url).includes('accounts.spotify.com/api/token')) {
+            return new Response(JSON.stringify({ access_token: 'fresh', expires_in: 3600 }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+    };
+    try {
+        const res = await spotify.default.fetch(req('/refresh-check'), spotifyEnvProbe, ctx);
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.deepEqual(body, { ok: true, source: 'kv' });
+        assert.ok(kvRead, 'refresh-check performed a real KV read');
+        // No token material in the response.
+        assert.ok(!JSON.stringify(body).includes('fresh'));
+    } finally {
+        delete globalThis.fetch;
+        globalThis.caches = makeCache();
+    }
+});
+
 // ---- steam-proxy ----
 const steam = await import('../workers/steam-proxy.js');
 const steamEnv = { STEAM_API_KEY: 'k' };

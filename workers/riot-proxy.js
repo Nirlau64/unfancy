@@ -46,13 +46,18 @@ async function rateLimit(req) {
   const window = Math.floor(Date.now() / (RATE_WINDOW_SECONDS * 1000));
   const bucket = url.pathname.split('/').filter(Boolean)[0] || 'root';
   const key = new Request(`https://rate-limit.local/riot-proxy/${ip}/${bucket}/${window}`);
-  const cached = await caches.default.match(key);
-  const count = cached ? Number(await cached.text()) || 0 : 0;
-  if (count >= RATE_LIMIT) return false;
-  const counter = new Response(String(count + 1));
-  counter.headers.set('Cache-Control', `public, max-age=${RATE_WINDOW_SECONDS}`);
-  await caches.default.put(key, counter);
-  return true;
+  // Best-effort guard: if the cache backend fails, requests are served (fail-open).
+  try {
+    const cached = await caches.default.match(key);
+    const count = cached ? Number(await cached.text()) || 0 : 0;
+    if (count >= RATE_LIMIT) return false;
+    const counter = new Response(String(count + 1));
+    counter.headers.set('Cache-Control', `public, max-age=${RATE_WINDOW_SECONDS}`);
+    await caches.default.put(key, counter);
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 async function fetchCached(url, headers, ctx, okTTL = 120) {

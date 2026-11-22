@@ -43,29 +43,37 @@ async function rateLimit(request) {
   const window = Math.floor(Date.now() / (RATE_WINDOW_SECONDS * 1000));
   const bucket = url.pathname.split('/').filter(Boolean)[0] || 'root';
   const key = new Request(`https://rate-limit.local/spotify-proxy/${ip}/${bucket}/${window}`);
-  const cached = await caches.default.match(key);
-  const count = cached ? Number(await cached.text()) || 0 : 0;
-  if (count >= RATE_LIMIT) return false;
-  const counter = new Response(String(count + 1));
-  counter.headers.set('Cache-Control', `public, max-age=${RATE_WINDOW_SECONDS}`);
-  await caches.default.put(key, counter);
-  return true;
+  // The limiter is a best-effort guard, not a correctness feature: if the
+  // cache backend fails, requests must still be served (fail-open).
+  try {
+    const cached = await caches.default.match(key);
+    const count = cached ? Number(await cached.text()) || 0 : 0;
+    if (count >= RATE_LIMIT) return false;
+    const counter = new Response(String(count + 1));
+    counter.headers.set('Cache-Control', `public, max-age=${RATE_WINDOW_SECONDS}`);
+    await caches.default.put(key, counter);
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 /**
  * Holt einen Spotify Access Token, gecached für 55 Minuten (3300s).
  */
-async function getAccessToken(env, ctx) {
+async function getAccessToken(env, ctx, forceRefresh = false) {
   // Key is versioned per source revision so a deploy always starts with a cold
   // token cache: the first request after a deploy provably exercises the KV
   // refresh-token path.
   const CACHE_KEY = 'https://spotify-token-cache.local/access_token/v2';
 
-  const cached = await caches.default.match(CACHE_KEY);
-  if (cached) {
-    const data = await cached.json();
-    if (data.expires_at > Date.now()) {
-      return { error: false, token: data.token };
+  if (!forceRefresh) {
+    const cached = await caches.default.match(CACHE_KEY);
+    if (cached) {
+      const data = await cached.json();
+      if (data.expires_at > Date.now()) {
+        return { error: false, token: data.token };
+      }
     }
   }
 
@@ -147,6 +155,17 @@ export default {
       if (apiResp.status === 204) return json({ is_playing: false }, 200, origin);
       if (!apiResp.ok) return json({ error: 'Spotify API error' }, apiResp.status, origin);
       return json(await apiResp.json(), 200, origin);
+    }
+
+    // Diagnostic endpoint: forces a fresh access-token exchange (bypasses the
+    // token cache) and reports success without ever returning token material.
+    // Proves the KV refresh-token path is intact before/after binding changes.
+    if (url.pathname === '/refresh-check') {
+      const tokenResp = await getAccessToken(env, ctx, true);
+      if (tokenResp.error) {
+        return json({ ok: false, error: 'token exchange failed' }, 502, origin);
+      }
+      return json({ ok: true, source: 'kv' }, 200, origin);
     }
 
     if (url.pathname === '/top-artists' || url.pathname === '/top-tracks') {
