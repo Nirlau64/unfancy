@@ -1,3 +1,4 @@
+import { logInvocation } from './invocation-logging.js';
 const ALLOWED_ORIGINS = ['https://nirlau.de', 'https://www.nirlau.de'];
 
 const TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
@@ -139,6 +140,9 @@ async function fetchSpotify(url, token, ctx, cacheTtl = 0) {
 
 export default {
   async fetch(request, env, ctx) {
+    return logInvocation(request, () => this._fetch(request, env, ctx));
+  },
+  async _fetch(request, env, ctx) {
     try {
       return await handleRequest(request, env, ctx);
     } catch {

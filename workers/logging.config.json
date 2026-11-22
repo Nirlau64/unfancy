@@ -1,0 +1,4 @@
+{
+  "retentionDays": 30,
+  "redactedQueryParameters": ["token", "key", "secret", "api_key", "authorization", "code", "state", "client_secret", "access_token", "refresh_token"]
+}

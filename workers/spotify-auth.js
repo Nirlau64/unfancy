@@ -1,3 +1,4 @@
+import { logInvocation } from './invocation-logging.js';
 const SPOTIFY_AUTHORIZE = 'https://accounts.spotify.com/authorize';
 const SPOTIFY_TOKEN = 'https://accounts.spotify.com/api/token';
 const SCOPES = 'user-read-currently-playing user-top-read';
@@ -138,6 +139,9 @@ function timingSafeEqual(a, b) {
 
 export default {
   async fetch(request, env) {
+    return logInvocation(request, () => this._fetch(request, env));
+  },
+  async _fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === '/setup') return setupPage(request, env);
     if (url.pathname === '/callback' && request.method === 'GET') return callback(request, env);

@@ -1,3 +1,4 @@
+import { logInvocation } from './invocation-logging.js';
 // Hardened Riot proxy (nirlau.de/api.nirlau.de). Logic mirrors the live worker;
 // hardening: method allowlist, CORS only for allowlisted origins, strict input
 // validation, per-IP rate limiting and no upstream calls for invalid input.
@@ -169,6 +170,9 @@ async function passthrough(where, resp, origin) {
 
 export default {
   async fetch(req, env, ctx) {
+    return logInvocation(req, () => this._fetch(req, env, ctx));
+  },
+  async _fetch(req, env, ctx) {
     const origin = allowedOrigin(req);
 
     if (req.method === "OPTIONS") {

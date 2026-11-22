@@ -1,3 +1,4 @@
+import { logInvocation } from './invocation-logging.js';
 const STEAM = "https://api.steampowered.com";
 const ALLOWED_ORIGINS = ['https://nirlau.de', 'https://www.nirlau.de'];
 
@@ -195,6 +196,9 @@ async function handle(req, env) {
 
 export default {
   async fetch(req, env) {
+    return logInvocation(req, () => this._fetch(req, env));
+  },
+  async _fetch(req, env) {
     return handle(req, env);
   }
 };
