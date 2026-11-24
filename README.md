@@ -7,7 +7,7 @@
 ## 🚀 Key Features
 
 ### ⚡ Fragment-SPA (Single Page Application)
-Dank eines integrierten Vanilla JS Routers wechseln die Inhalte (Steam, Spotify, LoL) ohne harten Seitenumbruch. Die `index.html` dient als einzige App-Shell — alle Seiten-Inhalte werden als HTML-Fragmente aus `pages/` nachgeladen. Das sorgt für eine App-ähnliche Experience bei gleichzeitig zentraler Wartung von Header, Navigation und Footer.
+Dank eines integrierten Vanilla JS Routers wechseln die Inhalte (Steam, Spotify, LoL) ohne harten Seitenumbruch. `index.html` und `pages/` sind die handgeschriebenen Quellen; der Generator erzeugt daraus vollständige Bereichsseiten unter `/steam/`, `/spotify/`, `/lol/` und `/socials/`. Direktaufrufe enthalten bereits statischen Inhalt, weitere Navigation lädt Fragmente nach. Header, Navigation und Footer bleiben zentral wartbar.
 
 ### 🎨 Dynamisches Theming & UX
 *   **Adaptive Akzentfarben:** Die gesamte Website passt ihre Akzentfarbe (`--accent`) in Echtzeit an das Album-Cover deines aktuellen Spotify-Songs an.
@@ -46,7 +46,7 @@ unfancy/
 ├── 404.html             # Gestylte Fehlerseite (noindex,nofollow)
 ├── style.css            # Globale Styles & Transition-Definitionen
 ├── CNAME                # GitHub Pages Custom Domain (nirlau.de)
-├── _headers             # Cloudflare Pages Edge-Header (HSTS, CSP-Report-Only)
+├── _headers             # Header-Vorlage; GitHub Pages wertet diese Datei NICHT aus
 ├── manifest.json        # PWA-Manifest (favicon-64/icon-192/icon-512)
 ├── sw.js                # Service Worker (unfancy-v7, keine API-Persistenz)
 ├── sitemap.xml          # Kanonische öffentliche Routen
@@ -75,9 +75,10 @@ unfancy/
 │   ├── icon-192.png             # PWA-Icon 192px
 │   ├── icon-512.png             # PWA-/OG-Icon 512px
 │   ├── apple-touch-icon.png     # 180×180
-│   ├── LICENSE.chartjs.txt      # MIT-Lizenz Chart.js
-│   ├── LICENSE.kurkle-color.txt # MIT-Lizenz @kurkle/color (in chart.umd.js eingebettet)
-│   └── vendor/chart.umd.js      # Chart.js 4.4.7 (lokal gepinnt, kein CDN)
+│   └── vendor/
+│       ├── LICENSE.chartjs.txt      # MIT-Lizenz Chart.js
+│       ├── LICENSE.kurkle-color.txt # MIT-Lizenz @kurkle/color
+│       └── chart.umd.js             # Chart.js 4.4.7 (lokal gepinnt, kein CDN)
 ├── workers/             # Cloudflare Worker (Spotify-Auth/-Proxy, Riot-, Steam-Proxy)
 ├── tests/               # node:test-Suite (inkl. Drift-/Whitespace-Checks)
 ├── docs/                # Härtungs- und Cloudflare-Write-Plan-Dokumentation
@@ -99,6 +100,19 @@ Pillow). Nach Änderungen an Quelle oder Skript neu generieren und die PNGs
 mitcommitten — bei gleicher Pillow-Version sind die Ausgaben byte-identisch.
 
 ---
+
+## Veröffentlichung und getrennte Rollouts
+
+Das Frontend wird von GitHub Pages aus `main` veröffentlicht. Der letzte vor der
+Wiederaufnahme bestätigte Pages-Deploy ist `57cd802` (10.11.2026). Ein Push von
+Worker-Quellen deployt **keine** Cloudflare-Worker: deren Uploads, Bindings,
+Migrationen und Rollback benötigen einen separat geprüften Rollout.
+
+`_headers` ist lediglich eine Vorlage für kompatible Hosts. Auf GitHub Pages
+aktiviert sie weder CSP-Report-Only noch andere HTTP-Sicherheitsheader. Das bereits
+aktive HSTS wird durch Cloudflare gesetzt und bleibt bei diesem Frontend-Release
+unverändert. Offene Edge-/Worker-Schritte stehen in
+[`docs/high-impact-hardening.md`](docs/high-impact-hardening.md).
 
 ## 💻 Lokale Entwicklung
 

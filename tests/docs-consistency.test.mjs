@@ -60,4 +60,3 @@ test('restore bundles are labelled historical/unverified: doc states ABSENT/requ
   assert.match(text, /kein bewiesener Rollback|kein belegter Restore/);
   assert.match(text, /per Read-only-Export erfasst und als reviewed Artifact vorliegen/);
 });
-

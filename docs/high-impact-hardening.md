@@ -1,4 +1,15 @@
-# Unfancy: High-Impact-Härtung — Umsetzungsstand 22.11.2026 (aktualisiert)
+# Unfancy: High-Impact-Härtung
+
+## Wiederaufnahme 24.11.2026 — maßgeblicher Release-Scope
+
+- Zusammengeführte Quellbasis: `6dcdd25`, 73/73 Node-Tests am 24.11. erneut bestanden; Browser-E2E ebenfalls bestanden. Die zusätzliche EOF-Leerzeile in `tests/docs-consistency.test.mjs` wurde für den Release entfernt, da der vollständige Diff gegen `origin/main` sonst den Whitespace-Check nicht besteht.
+- Frontend und Worker sind getrennte Rollouts. `nirlau.de` wird nachweislich von **GitHub Pages** aus `main` ausgeliefert (GitHub-Deployment `7690910494` auf `57cd802`, zusätzlich GitHub-Origin-Header live). Der vorhandene Cloudflare-Static-Assets-Worker `unfancy` ist kein belegtes Ziel dieser Domain und wird nicht verändert. Pages-Leserechte bei Cloudflare sind für diesen Release nicht erforderlich.
+- Der neue Frontend-Stand ist zur unabhängigen Release-Abnahme vorbereitet; Veröffentlichung und Live-Abnahme stehen noch aus. Ziel: alle fünf kanonischen Routen und Sitemap live, korrekte Icons und Service Worker; keine behauptete Ranking-/CWV-Wirkung.
+- `_headers` wird von GitHub Pages **nicht** ausgewertet. CSP-Report-Only und weitere Edge-Header bleiben ein separater offener Cloudflare-Schritt; vorhandenes HSTS `max-age=15552000` bleibt unverändert.
+- Die aktiven API-Worker-Sources wurden am 24.11. lesend exportiert. Diese Source-Bundles allein beweisen **keinen** vollständigen Settings-/Binding-Restore. Der alte Write-Plan unten ist historischer Planungsstand, keine aktuelle Ausführungsfreigabe. Neue Worker-Uploads benötigen exact gepinnte Upload-/Rollback-Requests und frischen unabhängigen Review.
+- Spotify-Refresh-Token wird weder rotiert noch ersetzt. Das bestehende Klartext-Binding wird nicht durch einen unvollständigen Upload stillschweigend gelöscht; eine gezielte Entfernung bleibt separat zu prüfen.
+
+## Historischer Stand 22.11.2026 (nicht als aktueller Deploy-Nachweis verwenden)
 
 Branch `kanban/t_52cfcf3b-local-fixes` (auf Basis des integrierten Standes `task/unfancy-integ-review`); vollständige Suite `node --test tests/*.test.mjs` grün, Browser-E2E (`scripts/e2e-browser.mjs`) grün, `git diff --check` sauber. **Nur lokal getestet — kein Merge, kein Produktion-Deploy.**
 
