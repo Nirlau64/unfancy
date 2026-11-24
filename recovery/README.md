@@ -1,17 +1,17 @@
 # Recovery-Rollout Workers (Branch `recovery/unfancy-workers-20261124`)
 
-Ziel: minimaler, reproduzierbarer Rollout-Pfad für `spotify-auth`, `spotify-proxy`,
-`riot-proxy`, `steam-proxy` inkl. Rollback. **Production-Apply ist bewusst NICHT
-Teil dieses Repos-Laufs** — dieser Branch liefert geprüfte Payloads, Guard-Runner,
-Readback-Projektion und lokale Runtime-Smokes. Kein CF-Write/-Read ist automatisiert;
-der Runner führt Requests nur aus, wenn der Parent/Operator ihn explizit aufruft.
+Ziel: reproduzierbare Rollout-Artefakte mit getrenntem Scope je Worker. Der
+reviewte Steam-Versuch wurde nach fehlgeschlagenem Live-Smoke zurückgerollt;
+Riot wurde nicht ausgerollt. **Weitere Apply-Aufrufe sind eingefroren**, bis
+Smoke-Ursache und ein phasenkorrekter Resume-Pfad separat geprüft sind.
+Die lokalen Testbefehle verwenden keinen Cloudflare-Zugang.
 
 ## Scopes (ehrlich getrennt)
 
 | Worker | Apply-Approval | Rollback | Warum |
 | --- | --- | --- | --- |
-| `steam-proxy` | Implementiert; **exaktes Review-GO ausstehend** | receipt-gestützt | lokale Tests sind keine Freigabe |
-| `riot-proxy` | Implementiert; **exaktes Review-GO ausstehend** | receipt-gestützt | erst nach verifiziertem Steam-Erfolg |
+| `steam-proxy` | reviewter Live-Versuch **zurückgerollt**, weiterer Apply eingefroren | Altversion + Settings + Smoke verifiziert | neuer Live-Smoke scheiterte |
+| `riot-proxy` | **nicht ausgeführt**, Kette gestoppt | receipt-gestützt vorbereitet | kein verifizierter Steam-Erfolg |
 | `spotify-proxy` | `GATED_READ_SCOPE` | supported, aber ohne Settings-GET | verbotene Reads |
 | `spotify-auth` | `NOT_YET_APPROVED` | **KEIN** supported Rollback | DO-Klassen-Lebenszyklus |
 
@@ -296,8 +296,37 @@ Abhängigkeiten oder Recovery-Zweige. Upload-Metadata werden jetzt an einer Stel
 gebildet und beim Receipt-Lesen exakt neu gehasht; fremde Fehlerdaten erscheinen
 nicht in Ausgaben. Frisches unabhängiges Review des gesamten exakten Pins bleibt
 Pflicht. Bei erneutem grundlegenden Safety-Befund wird der Pfad eingefroren,
-statt einen weiteren automatischen Recovery-Mechanismus anzubauen. Es gab bis
-zu diesem Dokumentationsstand **keinen Cloudflare-Write** durch diesen Rollout.
+statt einen weiteren automatischen Recovery-Mechanismus anzubauen.
 Die lokalen Implementierungs- und Testläufe dieses Worker-Branches führen keine
 Cloudflare-Aufrufe aus. Der Parent hat separat read-only Live-Preflights ausgeführt;
 Produktionsschreibzugriffe bleiben vom exakten Review-GO abhängig.
+
+## Live-Versuch und sicherer Endzustand — 24.11.2026
+
+- Ausgeführt wurde ausschließlich der von `reviewer-sol` (`tm_a82f36d71ab5`)
+  technisch freigegebene Steam-Pfad bei Commit `cd89345`, über die gepinnte
+  Credential-Bridge. Es gab genau einen Versionsupload, eine Aktivierung und
+  einen guarded Versionsrollback; keinen Write-Retry und keinen Riot-Write.
+- Neue Steam-Version `775ae326-f43b-4ba8-91bb-c0b5203a05a1` wurde zunächst bei
+  100 Prozent aktiv bestätigt, Settings unverändert. Der anschließende
+  öffentliche Smoke scheiterte mit der aggregierten Klasse `smoke_failed`.
+  Welche Einzelprüfung scheiterte, wurde nicht aufgezeichnet: HTTP, Schema,
+  ACAO und negative Eingabe bleiben mögliche, **nicht nachgewiesene** Ursachen.
+- Guarded Recovery bestätigte die alte Version
+  `6e8f4f79-f12c-4fd9-97f0-70da34d54b31` wieder bei 100 Prozent, neues
+  Deployment `d0a26bf1-0645-4493-8422-deecd0e00861`, vollständige
+  Settings-Gleichheit und bestandenen Altvertrags-Smoke. CLI endete korrekt
+  mit Exit 1 / `apply_failed_recovered`. **Das ist kein erfolgreicher Rollout.**
+- Das wertfreie Receipt liegt unter
+  `recovery/runs/steam-proxy-775ae326-f43b-4ba8-91bb-c0b5203a05a1.json` (0600,
+  gitignored). Die neue Version bleibt als **inaktiver neuester Upload** bestehen.
+  Der alte Pre-Apply-Pin ist damit absichtlich nicht wiederverwendbar: aktive
+  Deployment-ID und latest haben sich geändert. Kein blindes Wiederholen.
+- Nach Recovery öffentlich erneut geprüft: Steam gültige Eingabe HTTP 200,
+  ungültige Eingabe im alten Vertrag HTTP 200, Riot gültige Eingabe HTTP 200.
+  Spotify/Auth/HSTS wurden nicht geändert.
+- Zusätzlich besteht `tests/steam-runtime-smoke.test.mjs`: derselbe neue
+  Steam-Code mit beiden expliziten ES-Modulen, gepinntem Kompatibilitätsdatum,
+  Dummy-Key und gesperrtem echtem Upstream besteht den tatsächlichen
+  `cliSmoke` in workerd/Miniflare (200 + Schema + ACAO, negative 400/no-store).
+  Das belegt den isolierten Runtime-Vertrag, **nicht** die Live-Fehlerursache.
