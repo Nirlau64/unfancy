@@ -380,3 +380,32 @@ Produktionsschreibzugriffe bleiben vom exakten Review-GO abhängig.
   HTTP-Status. Antwortkörper, Exception-Texte und Querywerte bleiben außen vor.
   Diese Änderung diagnostiziert den alten Vorfall **nicht** nachträglich und ist
   keine Freigabe für einen neuen Apply.
+
+## Live-Abgleich nach Browser-Vantage — 24.11.2026
+
+- GitHub-Pages-HTML aus dem unabhängigen Chromium-Lauf passt bytegenau zu den
+  statischen Routen in Release-Commit `714a6566445bc356a0722d8ee26e57ee6fcb8581`:
+  `/` SHA-256 `3d6abee79711504f57ea32b4c157a7586d449aa4d2f81906d28b6f934b802327`,
+  `/steam/` `a25282861de3a8199685d25c8442acb0adf4daf0a1093b88cab3cead2cc73d6e`,
+  `/lol/` `eab4344edbb7b6ba2bcfc13d02c7d0a39015499914957e3b37ab51717ea72930`.
+  Die frühere Abweichung entstand aus dem Vergleich mit dem separaten
+  Worker-/Recovery-Branch `task/t_9b911644-riot` (`54bfa91`), nicht mit dem
+  Pages-Release. Alle drei Hashes wurden in der verfügbaren Git-Historie
+  wiedergefunden, sowohl in `714a656` als auch dessen Vorgänger `307da86`.
+- Ein unabhängiger Chromium-GET-Lauf von der echten Frontend-Origin `https://nirlau.de`
+  bestätigte: Steam positiver API-Pfad 200 mit erwarteten Schlüsseln und
+  `malformed` 400 mit `error`; Riot positiver Pfad 200 mit erwartetem Schema
+  und ungültige Region 400 mit `error`. Alle vier Fetches waren CORS-lesbar.
+  Keine Bodies oder Querywerte wurden ausgegeben oder gespeichert.
+- Cloudflare-GET-Readbacks im Run 98 bestätigten Steam-Version
+  `775ae326-f43b-4ba8-91bb-c0b5203a05a1` und Riot-Version
+  `4d3a9b9c-fc7f-4618-9bc3-d2bf86651cd9` jeweils mit 100% Traffic; die
+  Deployment-IDs waren `9890961f-fa44-4c92-9f68-5dec9270b524` bzw.
+  `095b0820-370b-49d4-bbf2-373a3db5e1d6`.
+- Reihenfolgeabweichung: Riot wurde bereits vor erfolgreichem Steam-Gate
+  promoviert. Das ist dokumentiert, nicht nachträglich als korrekte Reihenfolge
+  dargestellt. Keine weiteren Deployments/Änderungen im Live-Abgleich.
+- Die ursprüngliche Steam-Smoke-Ursache bleibt **ungeklärt**: der erste Lauf
+  hatte nur `smoke_failed` gespeichert. Der aktuelle Erfolg und lokale
+  workerd/Miniflare-Regression belegen den jetzigen Vertrag, nicht die damalige
+  Ursache. Kein Rollback- oder Traffic-Zustand blieb laut Readbacks offen.
