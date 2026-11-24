@@ -746,9 +746,9 @@ test('cli smoke: steam positive schema + exact ACAO + negative 400; CORS failure
     { '/currently-playing?steamid=76561198159661156': { 'access-control-allow-origin': acao } }
   );
   await cliSmoke('steam-proxy', 'after-activation', steam('https://nirlau.de'));
-  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', steam('https://evil.example')), /CORS/);
-  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', steam(null)), /CORS/);
-  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', steam('https://nirlau.de', 502)), /smoke positive failed/);
+  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', steam('https://evil.example')), (e) => e.category === 'cors_mismatch');
+  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', steam(null)), (e) => e.category === 'cors_mismatch');
+  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', steam('https://nirlau.de', 502)), (e) => e.category === 'positive_http' && e.status === 502);
 });
 
 test('cli smoke: riot positive uses the real minimal stats schema; {error:...} body is rejected', async () => {
@@ -762,9 +762,9 @@ test('cli smoke: riot positive uses the real minimal stats schema; {error:...} b
   );
   const okBody = { summonerName: 'Lauri', level: 231, ranked: null, totalMasteryPoints: 42, masteryTop3: [], accountCreatedAt: null, accountCreatedAtApprox: null, recentMatches: [] };
   await cliSmoke('riot-proxy', 'after-activation', riot(okBody));
-  await assert.rejects(cliSmoke('riot-proxy', 'after-activation', riot({ error: 'upstream_error', summonerName: 'Lauri', level: 231 })), /schema/);
-  await assert.rejects(cliSmoke('riot-proxy', 'after-activation', riot({ error: 'x' })), /schema/);
-  await assert.rejects(cliSmoke('riot-proxy', 'after-activation', riot(okBody, 'https://evil.example')), /CORS/);
+  await assert.rejects(cliSmoke('riot-proxy', 'after-activation', riot({ error: 'upstream_error', summonerName: 'Lauri', level: 231 })), (e) => e.category === 'positive_schema');
+  await assert.rejects(cliSmoke('riot-proxy', 'after-activation', riot({ error: 'x' })), (e) => e.category === 'positive_schema');
+  await assert.rejects(cliSmoke('riot-proxy', 'after-activation', riot(okBody, 'https://evil.example')), (e) => e.category === 'cors_mismatch');
 });
 
 test('cli smoke: old-contract phase requires positive + exact ACAO only, NOT the new negative 400', async () => {
@@ -778,7 +778,19 @@ test('cli smoke: old-contract phase requires positive + exact ACAO only, NOT the
     { '/currently-playing?steamid=76561198159661156': { 'access-control-allow-origin': 'https://nirlau.de' } }
   );
   await cliSmoke('steam-proxy', 'after-rollback', oldStand); // passes despite missing negative hardening
-  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', oldStand), /negative/);
+  await assert.rejects(cliSmoke('steam-proxy', 'after-activation', oldStand), (e) => e.category === 'negative_http' && e.status === 200);
+});
+
+test('smoke diagnostics expose only allowlisted phase/category/status and never exception text', async () => {
+  const world = makeWorld('steam-proxy');
+  const { runner, logs } = makeRunner('steam-proxy', world, {
+    smoke: async ({ phase }) => { if (phase === 'after-activation') throw new Error('secret query=CANARY upstream payload CANARY'); },
+  });
+  const out = await runner.runApply();
+  assert.equal(out.applied, false);
+  assert.equal(out.rolledBack, true);
+  assert.ok(logs.some((line) => line.includes('phase=after-activation, category=transport_error')));
+  assert.ok(!logs.join(' ').includes('CANARY'));
 });
 
 // ---------------------------------------------------------------------------

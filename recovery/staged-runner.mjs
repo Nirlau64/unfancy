@@ -42,8 +42,8 @@
 //    receipt (verified with O_NOFOLLOW, mode 0600 and full pin/schema/hash
 //    validation) — an arbitrary UUID is never accepted as proof of ownership.
 //  - Error hygiene: RunnerAbort details and logs contain ONLY internal reasons,
-//    HTTP status numbers and validated numeric API error codes — never raw API
-//    messages, nested API error payloads or exception texts.
+//    allowlisted smoke phase/category enums, HTTP status numbers and validated
+//    numeric API error codes — never API messages, response bodies or exception text.
 //  - Unknown write outcome: NO retry, NO blind repeat. Exactly one readback
 //    classifies the outcome; if still unclear -> STOP 'unverified', reporting
 //    the truthful active state — never a false "inactive" claim.
@@ -83,6 +83,18 @@ export class RunnerAbort extends Error {
     if (Array.isArray(detail.apiErrorCodes)) {
       this.detail.apiErrorCodes = detail.apiErrorCodes.filter(Number.isSafeInteger);
     }
+    if (['after-activation', 'after-rollback'].includes(detail.phase)) this.detail.phase = detail.phase;
+    if (['positive_http', 'positive_json', 'positive_schema', 'cors_mismatch', 'negative_http', 'transport_error'].includes(detail.smokeCategory)) {
+      this.detail.smokeCategory = detail.smokeCategory;
+    }
+  }
+}
+
+class SmokeCheckError extends Error {
+  constructor(category, status) {
+    super('Smoke check failed');
+    this.category = category;
+    this.status = Number.isInteger(status) ? status : undefined;
   }
 }
 
@@ -767,9 +779,11 @@ export function createStagedRunner({
     try {
       await smoke({ phase, worker, ownVersionId: state.ownVersionId, oldVersionId: oldPin.versionId });
     } catch (err) {
-      // Smoke error texts are never propagated (they may contain arbitrary
-      // strings): only the failure kind is kept.
-      throw new RunnerAbort('smoke_failed');
+      const detail = err instanceof SmokeCheckError
+        ? { phase, smokeCategory: err.category, status: err.status }
+        : { phase, smokeCategory: 'transport_error' };
+      log(`smoke failed (phase=${phase}, category=${detail.smokeCategory}${detail.status === undefined ? '' : `, status=${detail.status}`})`);
+      throw new RunnerAbort('smoke_failed', detail);
     }
     log(`smoke passed (phase=${phase})`);
   }
@@ -878,34 +892,22 @@ export async function cliSmoke(worker, phase = 'after-activation', fetchImpl = g
     try { json = await res.json(); } catch { json = null; }
     return { status: res.status, json, acao: res.headers.get('access-control-allow-origin') };
   }
-  const pos = await get(t.positive.path);
-  if (pos.status !== 200 || !pos.json || typeof pos.json !== 'object') {
-    throw new Error(`smoke positive failed: HTTP ${Number(pos.status)} (expected 200 + JSON object)`);
-  }
+  let pos;
+  try { pos = await get(t.positive.path); } catch { throw new SmokeCheckError('transport_error'); }
+  if (pos.status !== 200) throw new SmokeCheckError('positive_http', pos.status);
+  if (!pos.json || typeof pos.json !== 'object' || Array.isArray(pos.json)) throw new SmokeCheckError('positive_json', pos.status);
   if (t.positive.expect === 'steam-currently-playing') {
-    if (!('game' in pos.json) || !('appid' in pos.json)) {
-      throw new Error('smoke positive schema failed: expected {game, appid} keys');
-    }
+    if (!('game' in pos.json) || !('appid' in pos.json)) throw new SmokeCheckError('positive_schema', pos.status);
   } else if (t.positive.expect === 'riot-stats') {
-    // Real minimal usable stats schema from the current worker code (non-debug
-    // 200 body): {summonerName, level, ranked, totalMasteryPoints,
-    // masteryTop3, accountCreatedAt, accountCreatedAtApprox, recentMatches}.
-    // An {error: ...} object is never a valid 200 here.
     if (!('summonerName' in pos.json) || typeof pos.json.summonerName !== 'string'
       || !('level' in pos.json) || typeof pos.json.level !== 'number'
-      || 'error' in pos.json) {
-      throw new Error('smoke positive schema failed: expected riot stats {summonerName, level} without error key');
-    }
+      || 'error' in pos.json) throw new SmokeCheckError('positive_schema', pos.status);
   }
-  // CORS check is REQUIRED: the allowlisted origin must be reflected EXACTLY.
-  if (pos.acao !== t.origin) {
-    throw new Error('smoke CORS check failed: ACAO does not exactly reflect the allowlisted origin');
-  }
-  if (phase !== 'after-activation') return; // old-contract smoke: no negative requirement
-  const neg = await get(t.negative.path);
-  if (neg.status !== t.negative.expectStatus) {
-    throw new Error(`smoke negative failed: HTTP ${Number(neg.status)} (expected ${t.negative.expectStatus})`);
-  }
+  if (pos.acao !== t.origin) throw new SmokeCheckError('cors_mismatch', pos.status);
+  if (phase !== 'after-activation') return;
+  let neg;
+  try { neg = await get(t.negative.path); } catch { throw new SmokeCheckError('transport_error'); }
+  if (neg.status !== t.negative.expectStatus) throw new SmokeCheckError('negative_http', neg.status);
 }
 
 export async function main(argv, env = process.env, { fetchFn = fetch, receiptDir } = {}) {

@@ -330,3 +330,11 @@ Produktionsschreibzugriffe bleiben vom exakten Review-GO abhängig.
   Dummy-Key und gesperrtem echtem Upstream besteht den tatsächlichen
   `cliSmoke` in workerd/Miniflare (200 + Schema + ACAO, negative 400/no-store).
   Das belegt den isolierten Runtime-Vertrag, **nicht** die Live-Fehlerursache.
+- Die frühere Ausführung speicherte nur `smoke_failed`; die konkrete Live-Ursache
+  ist nachträglich nicht rekonstruierbar. Seitdem protokolliert der Runner für
+  künftige, separat freigegebene Läufe ausschließlich die feste Phase,
+  Fehlerkategorie (`positive_http`, `positive_json`, `positive_schema`,
+  `cors_mismatch`, `negative_http`, `transport_error`) und ggf. den numerischen
+  HTTP-Status. Antwortkörper, Exception-Texte und Querywerte bleiben außen vor.
+  Diese Änderung diagnostiziert den alten Vorfall **nicht** nachträglich und ist
+  keine Freigabe für einen neuen Apply.
