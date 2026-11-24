@@ -66,23 +66,55 @@ import { projectSettings } from './readback-projection.mjs';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HEX64_RE = /^[0-9a-f]{64}$/i;
+
 const STAGED_RUNNERS = ['steam-proxy', 'riot-proxy'];
 const RECEIPT_SCHEMA = 'unfancy-recovery-staged-receipt/v1';
 const RECEIPT_MAX_BYTES = 1048576;
-// Official version-create metadata keys. The runner sends the SUBSET below.
-const METADATA_SENT_KEYS = new Set(['main_module', 'compatibility_date', 'compatibility_flags', 'bindings']);
+
 
 export class RunnerAbort extends Error {
   constructor(reason, detail = {}) {
     super(`STAGED RUNNER ABORT: ${reason}`);
     this.reason = reason;
-    this.detail = detail;
+    // Provider-controlled keys, binding names and exception strings are not
+    // diagnostics. Keep only bounded numeric status/codes on every exit path.
+    this.detail = {};
+    if (Number.isInteger(detail.status)) this.detail.status = detail.status;
+    if (Array.isArray(detail.apiErrorCodes)) {
+      this.detail.apiErrorCodes = detail.apiErrorCodes.filter(Number.isSafeInteger);
+    }
   }
 }
 
 function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
+}
+
+function stagedMetadata(payload) {
+  if (sha256(Buffer.from(JSON.stringify(payload.metadata))) !== payload.metadata_sha256) {
+    throw new RunnerAbort('metadata_pin_drift');
+  }
+  const meta = payload.metadata;
+  if (typeof meta.main_module !== 'string' || !meta.main_module) throw new RunnerAbort('metadata_missing_main_module');
+  if (typeof meta.compatibility_date !== 'string' || !Array.isArray(meta.compatibility_flags)) throw new RunnerAbort('metadata_missing_script_fields');
+  if (!Array.isArray(meta.bindings) || !meta.bindings.length) throw new RunnerAbort('metadata_missing_bindings');
+  for (const binding of meta.bindings) {
+    if (JSON.stringify(Object.keys(binding).sort()) !== JSON.stringify(['name', 'type']) || binding.type !== 'inherit') {
+      throw new RunnerAbort('binding_not_inherit');
+    }
+  }
+  return {
+    main_module: meta.main_module,
+    compatibility_date: meta.compatibility_date,
+    compatibility_flags: [...meta.compatibility_flags],
+    bindings: meta.bindings.map(({ name }) => ({ type: 'inherit', name })),
+  };
+}
+
+export function formatCliError(err) {
+  return err instanceof RunnerAbort
+    ? `STAGED RUNNER ABORT: ${err.reason} ${JSON.stringify(err.detail)}`
+    : 'STAGED RUNNER ABORT: internal_error';
 }
 
 function endpointToRegex(pattern) {
@@ -94,9 +126,6 @@ function isUuid(v) {
   return typeof v === 'string' && UUID_RE.test(v);
 }
 
-function isHex64(v) {
-  return typeof v === 'string' && HEX64_RE.test(v);
-}
 
 // Numeric API error codes only — API message strings and nested objects are
 // never copied into details or logs.
@@ -133,7 +162,7 @@ function versionsListInfo(versionsJson) {
   for (const v of versions) {
     if (!v || typeof v !== 'object' || !isUuid(v.id)) throw new RunnerAbort('unreadable_versions');
   }
-  return { newestId: versions[0].id, newestCreated: versions[0].created_on ?? null, list: versions };
+  return { newestId: versions[0].id, list: versions };
 }
 
 // Compare projected live settings against the pinned full settings. Unknown
@@ -258,7 +287,11 @@ export function readStagedReceipt(receiptPath, { worker, account, payload, rollb
   }
   let text;
   try {
-    const size = fstatSync(fd).size;
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || (opened.mode & 0o777) !== 0o600 || opened.ino !== st.ino || opened.dev !== st.dev) {
+      throw new RunnerAbort('receipt_invalid');
+    }
+    const size = opened.size;
     if (size <= 0 || size > RECEIPT_MAX_BYTES) throw new RunnerAbort('receipt_refused', { reason: 'size' });
     const buf = Buffer.alloc(size);
     let offset = 0;
@@ -298,7 +331,7 @@ export function readStagedReceipt(receiptPath, { worker, account, payload, rollb
   const src = receipt?.source_sha256 ?? {};
   for (const p of payload.parts) expect(src?.[p.filename] === payload.part_sha256[p.filename], `source_sha256.${p.filename}`);
   expect(receipt?.pinned_metadata_sha256 === payload.metadata_sha256, 'pinned_metadata_sha256');
-  expect(isHex64(receipt?.upload_metadata_sha256), 'upload_metadata_sha256');
+  expect(receipt?.upload_metadata_sha256 === sha256(Buffer.from(JSON.stringify(stagedMetadata(payload)))), 'upload_metadata_sha256');
   expect(JSON.stringify(receipt?.activation_body) === JSON.stringify({
     strategy: 'percentage', versions: [{ version_id: receipt?.own_version_id, percentage: 100 }], force: false,
   }), 'activation_body');
@@ -434,37 +467,7 @@ export function createStagedRunner({
 
   // --- staged upload (inactive version) --------------------------------------
   function buildStagedMetadata() {
-    if (sha256(Buffer.from(JSON.stringify(payload.metadata))) !== payload.metadata_sha256) {
-      throw new RunnerAbort('metadata_pin_drift', { metadata_sha256: payload.metadata_sha256 });
-    }
-    const meta = payload.metadata;
-    // The pinned payload metadata is the OLD PUT-era pin (it contains
-    // script-level settings fields as preservation pins). Those fields are
-    // NEVER sent here — the staged upload is built as a strict SUBSET.
-    if (typeof meta.main_module !== 'string' || meta.main_module.length === 0) {
-      throw new RunnerAbort('metadata_missing_main_module');
-    }
-    if (typeof meta.compatibility_date !== 'string' || !Array.isArray(meta.compatibility_flags)) {
-      throw new RunnerAbort('metadata_missing_script_fields');
-    }
-    if (!Array.isArray(meta.bindings) || meta.bindings.length === 0) {
-      throw new RunnerAbort('metadata_missing_bindings');
-    }
-    for (const b of meta.bindings) {
-      if (JSON.stringify(Object.keys(b).sort()) !== JSON.stringify(['name', 'type']) || b.type !== 'inherit') {
-        throw new RunnerAbort('binding_not_inherit', { binding: b });
-      }
-    }
-    const out = {
-      main_module: meta.main_module,
-      compatibility_date: meta.compatibility_date,
-      compatibility_flags: JSON.parse(JSON.stringify(meta.compatibility_flags)),
-      bindings: meta.bindings.map((b) => ({ type: 'inherit', name: b.name })),
-    };
-    for (const key of Object.keys(out)) {
-      if (!METADATA_SENT_KEYS.has(key)) throw new RunnerAbort('metadata_key_not_allowed', { key });
-    }
-    return out;
+    return stagedMetadata(payload);
   }
 
   function buildParts() {
@@ -766,7 +769,7 @@ export function createStagedRunner({
     } catch (err) {
       // Smoke error texts are never propagated (they may contain arbitrary
       // strings): only the failure kind is kept.
-      throw new RunnerAbort('smoke_failed', { phase, kind: err && typeof err.name === 'string' ? err.name : 'unknown' });
+      throw new RunnerAbort('smoke_failed');
     }
     log(`smoke passed (phase=${phase})`);
   }
@@ -810,7 +813,7 @@ export function createStagedRunner({
   async function standaloneRollback(ownVersionId) {
     if (!isUuid(ownVersionId)) throw new RunnerAbort('rollback_requires_receipt_uuid', {});
     state.ownVersionId = ownVersionId;
-    return guardedRollback({ verifySmoke: false, context: 'standalone' });
+    return guardedRollback({ verifySmoke: true, context: 'standalone' });
   }
 
   return {
@@ -905,7 +908,7 @@ export async function cliSmoke(worker, phase = 'after-activation', fetchImpl = g
   }
 }
 
-export async function main(argv, env = process.env) {
+export async function main(argv, env = process.env, { fetchFn = fetch, receiptDir } = {}) {
   const [worker, ...rest] = argv;
   if (!STAGED_RUNNERS.includes(worker)) {
     throw new Error(`staged-runner CLI: worker must be one of ${STAGED_RUNNERS.join(', ')}`);
@@ -935,7 +938,7 @@ export async function main(argv, env = process.env) {
   }
 
   const transport = async ({ method, url, headers, body }) => {
-    const res = await fetch(url, {
+    const res = await fetchFn(url, {
       method,
       headers: { ...headers, Authorization: `Bearer ${token}` },
       body: body && Buffer.isBuffer(body) ? new Uint8Array(body) : body,
@@ -948,12 +951,13 @@ export async function main(argv, env = process.env) {
   const runner = createStagedRunner({
     worker, account, payload, rollbackPayload, transport,
     log: (m) => console.log(m),
-    smoke: ({ phase }) => cliSmoke(worker, phase),
-    receiptDir: receiptPath ? dirname(receiptPath) : undefined,
+    smoke: ({ phase }) => cliSmoke(worker, phase, fetchFn),
+    receiptDir: receiptPath ? dirname(receiptPath) : receiptDir,
   });
   if (execute) {
     const out = await runner.runApply();
     console.log(`STAGED APPLY ${out.rolledBack ? `ROLLED BACK (cause: ${out.cause})` : 'VERIFIED'}: ${worker}`);
+    if (!out.applied) throw new RunnerAbort('apply_failed_recovered');
     return out;
   }
   const out = await runner.standaloneRollback(receipt.own_version_id);
@@ -963,7 +967,7 @@ export async function main(argv, env = process.env) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main(process.argv.slice(2)).catch((err) => {
-    console.error(err instanceof RunnerAbort ? `${err.message} ${JSON.stringify(err.detail)}` : err.message);
+    console.error(formatCliError(err));
     process.exit(1);
   });
 }

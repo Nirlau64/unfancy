@@ -10,8 +10,8 @@ der Runner führt Requests nur aus, wenn der Parent/Operator ihn explizit aufruf
 
 | Worker | Apply-Approval | Rollback | Warum |
 | --- | --- | --- | --- |
-| `steam-proxy` | `EXECUTABLE` **nur via staged-runner** | supported (Own-Version-Guard) | keine Blocker |
-| `riot-proxy` | `EXECUTABLE` **nur via staged-runner** | supported (Own-Version-Guard) | keine Blocker |
+| `steam-proxy` | Implementiert; **exaktes Review-GO ausstehend** | receipt-gestützt | lokale Tests sind keine Freigabe |
+| `riot-proxy` | Implementiert; **exaktes Review-GO ausstehend** | receipt-gestützt | erst nach verifiziertem Steam-Erfolg |
 | `spotify-proxy` | `GATED_READ_SCOPE` | supported, aber ohne Settings-GET | verbotene Reads |
 | `spotify-auth` | `NOT_YET_APPROVED` | **KEIN** supported Rollback | DO-Klassen-Lebenszyklus |
 
@@ -93,8 +93,9 @@ Payloads referenzieren den Pin über die Annotation `workers/message`.
   - **Pre-Apply-Drift-Guards** (getrennt von den Post-Write-Guards):
     1. aktives Deployment === gepinnte Deployment-ID **und** gepinnte Version-ID;
     2. neueste Upload-Version === gepinnte aktive Version (`inherit` löst gegen die
-       **LATEST UPLOADED**, nicht die aktive Version auf) **plus** Versions-Zähler
-       unverändert — jede extra unveröffentlichte Version → STOP;
+       **LATEST UPLOADED**, nicht die aktive Version auf); vor dem Upload gilt
+       latest===alter Pin, danach latest===eigene UUID. Es gibt keinen separaten
+       Versions-Zähler-Guard; eine fremde neueste Version führt zu STOP;
     3. vollständige Safe-Settings inkl. Bindings-Inventar (riot/steam: erlaubtes
        Settings-GET, da nur `secret_text`-Bindings; spotify-proxy: **entfällt**,
        siehe verbotene Reads).
@@ -204,6 +205,9 @@ Weitere Tests:
   (Versions-Detail, Spotify-Settings) sind nicht auf der Allowlist.
   Smoke-Tests laufen im selben Apply-Prozess über den injizierten
   Smoke-Callback; bei Smoke-Fail: guarded Rollback + Alt-Readback + Smoke.
+  Auch Standalone-Rollback benötigt den Altversions-Smoke. Ein fehlgeschlagenes
+  Apply endet **auch nach erfolgreicher Wiederherstellung mit Exit 1**; eine
+  wiederhergestellte Altversion ist kein Deployment-Erfolg für den nächsten Worker.
   Unklarer Write-Ausgang: **kein** Retry, genau ein Readback zur
   Klassifikation. Grenze ehrlich: Read-check-write ohne serverseitiges CAS
   ist **nicht atomar** — die frischen Guards je Write verkleinern das
@@ -267,6 +271,25 @@ steam 200, riot 200, spotify `/now-playing` 403 mit und ohne Origin `https://nir
 - Der DO-Migrations- und `OAUTH_STATE`-Payload ist gegen das offizielle Schema
   geprüft, aber **nicht produktiv verifiziert**.
 - Keine Token-Rotation/Revocation; kein Frontend-Deploy (Frontend ist GitHub Pages,
-  SHA `57cd802`, bleibt unangetastet); HSTS (W4) unverändert.
-- Keine CF-Reads/-Writes durch Agenten in diesem Lauf; alle CF-Aufrufe laufen nur
-  durch den explizit aufgerufenen Runner.
+  separat veröffentlicht bei SHA `714a656`; dieser Branch deployed es nicht);
+  HSTS (W4) unverändert lassen.
+
+## Recovery-Review und Kurskorrektur
+
+Der ursprüngliche Auftrag ist die Fertigstellung der Website, nicht der Bau
+eines allgemeinen Deployment-Frameworks. Das Frontend ist bereits separat live.
+Der historische PUT-Pfad wurde verworfen, weil seine Antwort-ID keine Versions-ID
+ist. Der staged Pfad blieb nach 137 bestandenen Tests im Review gesperrt:
+Standalone-Rollback ohne Smoke, frei übernommene Fehlerfelder, nur syntaktische
+Upload-Metadaten-Hashprüfung und falsche Versionszeitstempel-Fixtures.
+
+Kurskorrektur: diese konkreten Lücken direkt beheben, keine zusätzlichen Modi,
+Abhängigkeiten oder Recovery-Zweige. Upload-Metadata werden jetzt an einer Stelle
+gebildet und beim Receipt-Lesen exakt neu gehasht; fremde Fehlerdaten erscheinen
+nicht in Ausgaben. Frisches unabhängiges Review des gesamten exakten Pins bleibt
+Pflicht. Bei erneutem grundlegenden Safety-Befund wird der Pfad eingefroren,
+statt einen weiteren automatischen Recovery-Mechanismus anzubauen. Es gab bis
+zu diesem Dokumentationsstand **keinen Cloudflare-Write** durch diesen Rollout.
+Die lokalen Implementierungs- und Testläufe dieses Worker-Branches führen keine
+Cloudflare-Aufrufe aus. Der Parent hat separat read-only Live-Preflights ausgeführt;
+Produktionsschreibzugriffe bleiben vom exakten Review-GO abhängig.

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { createStagedRunner, RunnerAbort, readStagedReceipt, cliSmoke } from '../recovery/staged-runner.mjs';
+import { createStagedRunner, RunnerAbort, readStagedReceipt, cliSmoke, formatCliError, main } from '../recovery/staged-runner.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATED = (w) => join(root, 'recovery', 'generated', `${w}.deploy.json`);
@@ -35,11 +35,11 @@ function mixedDeploymentsBody({ deploymentId, versionId }) {
   };
 }
 // Official versions-list envelope: the FIRST entry is the LATEST; entries carry
-// id and created_on. Fixtures are newest-first — no invented sorting schema.
+// id and metadata.created_on. Fixtures are newest-first, as returned by CF.
 function versionsListBody(idsNewestFirst) {
   return {
     success: true,
-    result: idsNewestFirst.map((id, i) => ({ id, created_on: new Date(Date.UTC(2026, 10, 24, 0, 0, 59 - i)).toISOString() })),
+    result: idsNewestFirst.map((id, i) => ({ id, metadata: { created_on: new Date(Date.UTC(2026, 10, 24, 0, 0, 59 - i)).toISOString() } })),
   };
 }
 function settingsBody({ compatibilityDate, worker }) {
@@ -611,7 +611,12 @@ test('receipt validation: valid receipt passes; wrong hash / mode / symlink refu
     },
     source_sha256: payload.part_sha256,
     pinned_metadata_sha256: payload.metadata_sha256,
-    upload_metadata_sha256: 'a'.repeat(64),
+    upload_metadata_sha256: createHash('sha256').update(JSON.stringify({
+      main_module: payload.metadata.main_module,
+      compatibility_date: payload.metadata.compatibility_date,
+      compatibility_flags: payload.metadata.compatibility_flags,
+      bindings: payload.metadata.bindings.map(({ name }) => ({ type: 'inherit', name })),
+    })).digest('hex'),
     activation_body: { strategy: 'percentage', versions: [{ version_id: OWN_VERSION, percentage: 100 }], force: false },
     rollback_body: { strategy: 'percentage', versions: [{ version_id: OLD_PIN['steam-proxy'].ver, percentage: 100 }], force: false },
   };
@@ -623,6 +628,11 @@ test('receipt validation: valid receipt passes; wrong hash / mode / symlink refu
   chmodSync(path, 0o600);
   const ok = readStagedReceipt(path, { worker: 'steam-proxy', account: ACCOUNT, payload, rollbackPayload: rb });
   assert.equal(ok.own_version_id, OWN_VERSION);
+
+  // A syntactically valid SHA-256 is not a metadata ownership proof.
+  writeFileSync(path, JSON.stringify({ ...base, upload_metadata_sha256: 'f'.repeat(64) }));
+  assert.throws(() => readStagedReceipt(path, { worker: 'steam-proxy', account: ACCOUNT, payload, rollbackPayload: rb }),
+    (e) => e instanceof RunnerAbort && e.reason === 'receipt_invalid');
 
   // wrong payload hash
   writeFileSync(path, JSON.stringify({ ...base, payload_sha256: { ...base.payload_sha256, deploy: 'f'.repeat(64) } }), { mode: 0o600 });
@@ -657,6 +667,60 @@ test('receipt validation: valid receipt passes; wrong hash / mode / symlink refu
 });
 
 // ---------------------------------------------------------------------------
+test('standalone rollback requires an old-version smoke and reports failed smoke truthfully', async () => {
+  for (const fail of [false, true]) {
+    const world = makeWorld('steam-proxy');
+    world.active = { deploymentId: OLD_PIN['steam-proxy'].dep, versionId: OWN_VERSION };
+    world.versionIds = [OWN_VERSION, OLD_PIN['steam-proxy'].ver];
+    world.smokeHook = async () => { if (fail) throw new Error(CANARY); };
+    const { runner, smokeCalls, logs } = makeRunner('steam-proxy', world);
+    if (fail) await assert.rejects(runner.standaloneRollback(OWN_VERSION), (e) => {
+      assert.ok(!JSON.stringify(e).includes(CANARY));
+      return e.reason === 'smoke_failed';
+    });
+    else assert.equal((await runner.standaloneRollback(OWN_VERSION)).verified, true);
+    assert.deepEqual(smokeCalls, ['after-rollback']);
+    if (fail) assert.ok(!logs.some((line) => line.startsWith('ROLLBACK VERIFIED')));
+  }
+});
+
+test('all error surfaces redact provider fields, binding names, smoke names and ordinary errors', async () => {
+  const unknown = makeWorld('steam-proxy');
+  unknown.settings.result[CANARY] = true;
+  const binding = makeWorld('steam-proxy');
+  binding.settings.result.bindings[0].name = CANARY;
+  const smoke = makeWorld('steam-proxy');
+  smoke.smokeHook = async () => { const err = new Error(CANARY); err.name = CANARY; throw err; };
+  for (const world of [unknown, binding, smoke]) {
+    const { runner, logs } = makeRunner('steam-proxy', world);
+    try { await runner.runApply(); } catch (err) {
+      assert.ok(!JSON.stringify({ error: err, message: err.message, cli: formatCliError(err), logs }).includes(CANARY));
+    }
+    assert.ok(!JSON.stringify(logs).includes(CANARY));
+  }
+  assert.equal(formatCliError(new Error(CANARY)), 'STAGED RUNNER ABORT: internal_error');
+});
+
+test('real CLI apply: recovered smoke failure rejects instead of returning deployment success', async () => {
+  const world = makeWorld('steam-proxy');
+  const { transport, calls } = makeTransport(world);
+  const fetchFn = async (url, options = {}) => {
+    if (new URL(url).hostname === 'api.cloudflare.com') {
+      const response = await transport({ ...options, url, body: options.body ? Buffer.from(options.body) : undefined });
+      return new Response(JSON.stringify(response.json), { status: response.status });
+    }
+    return new Response(JSON.stringify({ game: null, appid: null }), {
+      status: world.active.versionId === OWN_VERSION ? 503 : 200,
+      headers: { 'Access-Control-Allow-Origin': 'https://nirlau.de' },
+    });
+  };
+  await assert.rejects(main(['steam-proxy', '--execute'], { CF_ACCOUNT_ID: ACCOUNT, CF_API_TOKEN: CANARY }, {
+    fetchFn, receiptDir: receiptDirFor(),
+  }), (error) => error.reason === 'apply_failed_recovered');
+  assert.equal(world.active.versionId, OLD_PIN['steam-proxy'].ver);
+  assert.equal(calls.filter(({ method }) => method === 'POST').length, 3);
+});
+
 // CLI smoke (offline, injected fetch) — finding 7
 
 function fetchMock(statusByPath, headersByPath = {}) {
