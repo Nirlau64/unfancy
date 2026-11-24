@@ -10,10 +10,14 @@ der Runner führt Requests nur aus, wenn der Parent/Operator ihn explizit aufruf
 
 | Worker | Apply-Approval | Rollback | Warum |
 | --- | --- | --- | --- |
-| `steam-proxy` | `EXECUTABLE` (Runner) | supported (Own-Version-Guard) | keine Blocker |
-| `riot-proxy` | `EXECUTABLE` (Runner) | supported (Own-Version-Guard) | keine Blocker |
+| `steam-proxy` | `EXECUTABLE` **nur via staged-runner** | supported (Own-Version-Guard) | keine Blocker |
+| `riot-proxy` | `EXECUTABLE` **nur via staged-runner** | supported (Own-Version-Guard) | keine Blocker |
 | `spotify-proxy` | `GATED_READ_SCOPE` | supported, aber ohne Settings-GET | verbotene Reads |
 | `spotify-auth` | `NOT_YET_APPROVED` | **KEIN** supported Rollback | DO-Klassen-Lebenszyklus |
+
+Der historische PUT-Runner (`recovery/runner.mjs`) ist **eingefroren und NOT
+APPROVED** (CLI failt closed); für steam/riot gilt nur der Weg über
+`recovery/staged-runner.mjs` nach Parent-Review.
 
 - **spotify-proxy, verbotene Reads:** `GET .../settings` und `GET .../versions/{id}`
   sind für diesen Worker tabu — die Settings-Antwort kann das plain_text-Binding
@@ -113,8 +117,17 @@ Payloads referenzieren den Pin über die Annotation `workers/message`.
   werden **vollständig** projiziert (wertfrei). Wirft bewusst Fehler, wenn ein
   Binding ein Wertefeld (`text`/`value`) trägt — verhindert versehentliche Secret-
   Transporte aus Readbacks in Logs/Dateien.
-- `recovery/runner.mjs` — ausführbarer Apply/Rollback-Runner (Node ESM, **injected
-  transport**: keine Netzaufrufe im Modul selbst). Eigenschaften:
+- `recovery/runner.mjs` — **EINGEFROREN (NOT APPROVED)**: der historische
+  PUT-Runner. Die CLI verweigert `--execute` (fail closed). Begründung: die
+  PUT-Response-`id` war der Scriptname (kein Versions-UUID) und der neue
+  Vertrag läuft über die Versions-API (`recovery/staged-runner.mjs`). Die
+  orchestrierten Tests (`tests/runner-orchestrator.test.mjs`) bleiben als
+  Regressionsschutz — sie beanspruchen **keine** ausführbare Freigabe.
+- `recovery/staged-runner.mjs` — ausführbarer Staged-Runner (Node ESM, **injected
+  transport**, kein Netz im Modul): `POST versions?bindings_inherit=strict`
+  (staged/inaktiv, `result.id` UUID), wertfreies Receipt vor der Aktivierung
+  (`recovery/runs/`, gitignored), `POST deployments
+  {strategy:'percentage',versions:[{version_id:<own UUID>,percentage:100}],force:false}`.
   - Bearer **ausschließlich** aus `process.env.CF_API_TOKEN` (CLI-Pfad); kein op-/
     1Password-ENV wird gelesen oder weitergegeben (Resolver ist Sache des Parents).
   - Endpoint-Allowlist ausschließlich aus den Payloads; jede URL wird vor I/O geprüft,
@@ -151,28 +164,69 @@ Weitere Tests:
 - Bestehende Suite: `node --test <file>` je Datei (siehe Commits; Fixture-Zählungen
   dieser Dateien nicht mit der Parent-Baseline mischen).
 
+## Runner-Status (aktuell)
+
+- **`recovery/runner.mjs` (alter PUT-Runner): NOT APPROVED — CLI eingefroren.**
+  `node recovery/runner.mjs <worker> --execute` löst jetzt einen Fehler aus
+  (fail closed). Die PUT-Response-`id` war der **Scriptname**, kein
+  Versions-UUID; die Laufzeittests am historischen Orchestrator bleiben als
+  Regressionsschutz bestehen, aber **es besteht kein ausführbares Freigabe-
+  kriterium** für diesen Pfad mehr. Kein Deployment über diesen Runner.
+- **`recovery/staged-runner.mjs` (neu, staged Versions-API): der einzige
+  zustandsverändernde Pfad.** POST `versions?bindings_inherit=strict`
+  (staged, inaktiv, `result.id` muss UUID sein), dann Receipt (wertfrei,
+  `recovery/runs/`, O_EXCL|O_NOFOLLOW, 0600), dann
+  POST `deployments` `{strategy:'percentage',versions:[{version_id:<own
+  UUID>,percentage:100}],force:false}`. Upload-Metadaten enthalten NUR
+  `main_module`, `compatibility_date`, `compatibility_flags`,
+  `bindings` (`type:'inherit'`) — die Script-level-Settings
+  (`observability`, `logpush`, `tags`, `tail_consumers`, `placement`) werden
+  **nie** gesendet/gepatcht, sondern vor/nach jedem Write vollgleich geprüft.
+  `inherit` löst gegen die **LATEST UPLOAD** auf; strict schützt nur vor
+  fehlender Auflösung, nicht vor latest≠active-Wertgleichheit — deshalb
+  Guard `latest === pinned active` vor jedem Write. Multipart-Modulparts
+  tragen den **Dateinamen** als Feldnamen. Scope: **steam-/riot-proxy only**;
+  Spotify-Worker werden strukturell abgelehnt, verbotene Reads
+  (Versions-Detail, Spotify-Settings) sind nicht auf der Allowlist.
+  Smoke-Tests laufen im selben Apply-Prozess über den injizierten
+  Smoke-Callback; bei Smoke-Fail: guarded Rollback + Alt-Readback + Smoke.
+  Unklarer Write-Ausgang: **kein** Retry, genau ein Readback zur
+  Klassifikation. Grenze ehrlich: Read-check-write ohne serverseitiges CAS
+  ist **nicht atomar** — die frischen Guards je Write verkleinern das
+  Fenster, sie schließen es nicht. **Parent-Review des exakten Runners vor
+  jeder echten Invocation ist Pflicht**; ohne Freigabe läuft nur plan-only.
+
 ## Runbook (exakte Befehle, steam/riot zuerst)
 
 ```bash
 # 0) Lokale Tests (kein Netz, kein CF)
 node --test tests/recovery-payloads.test.mjs
-node --test tests/runner-orchestrator.test.mjs
+node --test tests/staged-runner-orchestrator.test.mjs
 node --test tests/oauthstate-miniflare.test.mjs
+# Historisch (Regressionsschutz, KEIN Freigabe-Kriterium für runner.mjs):
+node --test tests/runner-orchestrator.test.mjs
 
-# 1) Runner-Planansicht (macht NICHTS ohne --execute)
-node recovery/runner.mjs steam-proxy        # plan-only
-node recovery/runner.mjs riot-proxy         # plan-only
+# 1) Staged-Runner-Planansicht (macht NICHTS ohne --execute/--rollback)
+node recovery/staged-runner.mjs steam-proxy        # plan-only
+node recovery/staged-runner.mjs riot-proxy         # plan-only
 
-# 2) Ausführung (erst nach Parent-Review des exakten Runners; Env nur Prozess-ENV)
-CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/runner.mjs steam-proxy --execute
-CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/runner.mjs riot-proxy --execute
+# 1a) ALTER PUT-Runner: EINGEFROREN (NOT APPROVED). "--execute" failt closed.
+node recovery/runner.mjs steam-proxy --execute     # -> Fehler, keine Ausführung
+
+# 2) Ausführung (erst nach Parent-Review des exakten staged-runners;
+#    Env nur Prozess-ENV; Smokes laufen im selben Prozess)
+CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/staged-runner.mjs steam-proxy --execute
+CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/staged-runner.mjs riot-proxy --execute
+
+# 2a) Standalone-Rollback einer eigenen aktivierten Version (Ownership-Guards)
+CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/staged-runner.mjs steam-proxy --rollback <own-version-uuid>
 
 # 3) spotify-proxy: NUR nach separater geprüfter Entscheidung (GATED_READ_SCOPE,
-#    Binding-Drift ohne verbotene Reads unverifizierbar). Der Runner lehnt den
-#    Apply ab; ein manueller PUT ist nicht Teil dieses Runbooks.
+#    Binding-Drift ohne verbotene Reads unverifizierbar). Der staged-runner
+#    lehnt den Worker strukturell ab; ein manueller PUT ist nicht Teil dieses Runbooks.
 
-# 4) spotify-auth: NICHT FREIGEGEBEN (NOT_YET_APPROVED). Der Runner lehnt ab.
-#    Rollback-Template ist bewusst nicht ausführbar (rollback_supported:false).
+# 4) spotify-auth: NICHT FREIGEGEBEN (NOT_YET_APPROVED). Rollback-Template ist
+#    bewusst nicht ausführbar (rollback_supported:false).
 ```
 
 Der Parent reviewt den exakten Runner vor jeder Invocation. Keine Secrets in

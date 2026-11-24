@@ -369,6 +369,15 @@ export async function main(argv, env = process.env) {
     throw new Error(`runner CLI: worker must be one of steam-proxy, riot-proxy, spotify-proxy (got: ${String(worker)})`);
   }
   const execute = rest.includes('--execute');
+  if (execute) {
+    // FROZEN (NOT APPROVED): the legacy PUT runner is disabled as a CLI.
+    // The PUT path is replaced by the staged versions-API runner
+    // (recovery/staged-runner.mjs); the old PUT response.id was the script
+    // name, not a version UUID, and this runner is no longer approved for
+    // any execution. Programmatic createRunner imports keep working for the
+    // historical test suite only — no executable release is claimed.
+    throw new Error('runner CLI: FROZEN — the legacy PUT runner is NOT APPROVED for execution; use recovery/staged-runner.mjs (staged versions API) after parent review');
+  }
   if (!execute) {
     console.log(`plan-only (no --execute): would apply ${worker} after preapply guards; rollback payload on failure. No requests made.`);
     return { planOnly: true };
