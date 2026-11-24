@@ -1,0 +1,62 @@
+{
+  "worker": "spotify-auth",
+  "method": "PUT",
+  "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-auth",
+  "query": {
+    "bindings_inherit": "strict"
+  },
+  "metadata": {
+    "main_module": "spotify-auth.js",
+    "bindings": [
+      {
+        "type": "inherit",
+        "name": "SPOTIFY_CLIENT_ID"
+      },
+      {
+        "type": "inherit",
+        "name": "SPOTIFY_CLIENT_SECRET"
+      },
+      {
+        "type": "inherit",
+        "name": "TOKENS"
+      },
+      {
+        "type": "durable_object_namespace",
+        "name": "OAUTH_STATE",
+        "class_name": "OAuthState"
+      }
+    ],
+    "migrations": [
+      {
+        "new_tag": "unfancy-oauthstate-2026-11-24",
+        "new_sqlite_classes": [
+          "OAuthState"
+        ]
+      }
+    ],
+    "annotations": {
+      "workers/message": "unfancy recovery rollout 6dcdd25"
+    }
+  },
+  "parts": [
+    {
+      "filename": "spotify-auth.js",
+      "path": "workers/spotify-auth.js",
+      "content_type": "application/javascript+module"
+    }
+  ],
+  "post_deploy_readback": {
+    "method": "GET",
+    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-auth/settings",
+    "expected_binding_names_sorted": [
+      "OAUTH_STATE",
+      "SPOTIFY_CLIENT_ID",
+      "SPOTIFY_CLIENT_SECRET",
+      "TOKENS"
+    ],
+    "expected_compat_date": "absent-or-empty",
+    "projection": "readback-projection.mjs (name/type/resource-id only, never values)",
+    "abort_rule": "Any deviation (missing/reordered/renamed binding, unexpected type, KV namespace id change, unexpected compatibility_date) -> STOP, run rollback payload for this worker."
+  },
+  "function_smoke": "Local miniflare smoke only (tests/oauthstate-miniflare.test.mjs). Production /callback needs a live authorized flow by the operator; no secret values handled by this repo."
+}

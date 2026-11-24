@@ -1,0 +1,58 @@
+{
+  "worker": "spotify-proxy",
+  "method": "PUT",
+  "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-proxy",
+  "query": {
+    "bindings_inherit": "strict"
+  },
+  "metadata": {
+    "main_module": "spotify-proxy.js",
+    "bindings": [
+      {
+        "type": "inherit",
+        "name": "SPOTIFY_CLIENT_ID"
+      },
+      {
+        "type": "inherit",
+        "name": "SPOTIFY_CLIENT_SECRET"
+      },
+      {
+        "type": "inherit",
+        "name": "SPOTIFY_REFRESH_TOKEN"
+      },
+      {
+        "type": "inherit",
+        "name": "TOKENS"
+      }
+    ],
+    "annotations": {
+      "workers/message": "unfancy recovery rollout 6dcdd25"
+    }
+  },
+  "parts": [
+    {
+      "filename": "spotify-proxy.js",
+      "path": "workers/spotify-proxy.js",
+      "content_type": "application/javascript+module"
+    },
+    {
+      "filename": "invocation-logging.js",
+      "path": "workers/invocation-logging.js",
+      "content_type": "application/javascript+module"
+    }
+  ],
+  "post_deploy_readback": {
+    "method": "GET",
+    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-proxy/settings",
+    "expected_binding_names_sorted": [
+      "SPOTIFY_CLIENT_ID",
+      "SPOTIFY_CLIENT_SECRET",
+      "SPOTIFY_REFRESH_TOKEN",
+      "TOKENS"
+    ],
+    "expected_compat_date": "absent-or-empty",
+    "projection": "readback-projection.mjs (name/type/resource-id only, never values)",
+    "abort_rule": "Any deviation (missing/reordered/renamed binding, unexpected type, KV namespace id change, unexpected compatibility_date) -> STOP, run rollback payload for this worker."
+  },
+  "function_smoke": "Follow docs/cloudflare-write-plan.md W1 function tests for this worker after operator apply."
+}

@@ -1,5 +1,16 @@
 # Cloudflare-Write-Plan Unfancy (Stand 22.11.2026, nach Live-Readback)
 
+> **Rollout-Status 24.11.2026 (neuer Pfad, dieser Stand ist für den Worker-Rollout
+> teilweise überholt):** der aktiv vorzubereitende Rollout-Pfad läuft über
+> `recovery/README.md` und `recovery/generated/` im Branch
+> `recovery/unfancy-workers-20261124` (Source-Pin `6dcdd25`, deploy über
+> `bindings_inherit=strict` + `type:"inherit"` Bindings, Rollback über
+> Versions-Deployment-Pins statt Quell-Re-Upload; `OAUTH_STATE` über
+> `migrations.new_sqlite_classes` + `durable_object_namespace`-Binding). Wo dieser
+> Plan dem widerspricht (z. B. Re-Upload-Rollback-Muster, fehlende Wrangler-Konfig
+> als Blocker), gilt der Recovery-Pfad als maßgeblich; HSTS W4 und das Frontend
+> (GitHub Pages, SHA `57cd802`) bleiben hier unverändert referenziert.
+
 **Freigabe-Gate: Kein Schritt dieses Plans (W0–W3, W5) wird ausgeführt, bevor ein frischer, unabhängiger Reviewer den korrigierten Plan mit GO bewertet hat.** W4 (Zone security_header/HSTS) wurde separat freigegeben, ausgeführt, live verifiziert (`max-age=15552000` ohne `includeSubDomains`/Preload) und bleibt unangetastet. Keine Token-Erweiterung, kein neuer Token; fehlende Rechte werden als Blocker gemeldet, nie umgangen.
 
 Live-Readback (read-only, 22.11.2026):

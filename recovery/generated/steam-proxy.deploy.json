@@ -1,0 +1,44 @@
+{
+  "worker": "steam-proxy",
+  "method": "PUT",
+  "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy",
+  "query": {
+    "bindings_inherit": "strict"
+  },
+  "metadata": {
+    "main_module": "steam-proxy.js",
+    "bindings": [
+      {
+        "type": "inherit",
+        "name": "STEAM_API_KEY"
+      }
+    ],
+    "compatibility_date": "2025-10-03",
+    "annotations": {
+      "workers/message": "unfancy recovery rollout 6dcdd25"
+    }
+  },
+  "parts": [
+    {
+      "filename": "steam-proxy.js",
+      "path": "workers/steam-proxy.js",
+      "content_type": "application/javascript+module"
+    },
+    {
+      "filename": "invocation-logging.js",
+      "path": "workers/invocation-logging.js",
+      "content_type": "application/javascript+module"
+    }
+  ],
+  "post_deploy_readback": {
+    "method": "GET",
+    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy/settings",
+    "expected_binding_names_sorted": [
+      "STEAM_API_KEY"
+    ],
+    "expected_compat_date": "2025-10-03",
+    "projection": "readback-projection.mjs (name/type/resource-id only, never values)",
+    "abort_rule": "Any deviation (missing/reordered/renamed binding, unexpected type, KV namespace id change, unexpected compatibility_date) -> STOP, run rollback payload for this worker."
+  },
+  "function_smoke": "Follow docs/cloudflare-write-plan.md W1 function tests for this worker after operator apply."
+}
