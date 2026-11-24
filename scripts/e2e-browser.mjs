@@ -14,11 +14,11 @@
  * `documentElement.dataset.unfancyReady` readiness marker, router-rendered
  * content, service-worker state) instead of fixed sleeps.
  *
- * The run also installs a `securitypolicyviolation` collector from document
- * start and fails on ANY violation, which proves the live API/reads
- * (spotify.api.nirlau.de, steam.api.nirlau.de, api.nirlau.de, rss2json,
- * ddragon, static.developer.riotgames.com, Instagram embed, YouTube frame)
- * pass under the new meta CSP. Read-only GETs only; no auth/token calls.
+ * CSP violations observed during this finite run are retained in Node across
+ * document changes. This does NOT prove successful upstream responses, data
+ * processing, or completeness of delayed embed requests. GET-only navigation;
+ * no auth/token calls. --csp-negative-control removes the Steam connect host
+ * only in test HTTP responses and must fail after a later document change.
  *
  * Requires a local Chrome/Chromium binary (default: google-chrome). Run with:
  *   node scripts/e2e-browser.mjs [--browser /path/to/chrome]
@@ -34,6 +34,9 @@ import { tmpdir } from 'node:os';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 8143;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
+const cspNegative = process.argv.includes('--csp-negative-control');
+const cspEvents = [];
+const collectorDocuments = new Set();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -60,7 +63,10 @@ function startServer() {
       }
       // No caching at all: every page load must exercise the current files.
       res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
-      res.end(readFileSync(file));
+      const bytes = readFileSync(file);
+      res.end(cspNegative && extname(file) === '.html'
+        ? bytes.toString('utf8').replaceAll(' steam.api.nirlau.de', '')
+        : bytes);
     });
     server.listen(PORT, '127.0.0.1', () => resolve(server));
   });
@@ -98,6 +104,11 @@ class CDP {
     });
     this.ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
+      if (msg.method === 'Runtime.bindingCalled' && msg.params.name === '__unfancyCspReport') {
+        const payload = JSON.parse(msg.params.payload);
+        if (payload.type === 'installed') collectorDocuments.add(payload.document);
+        else if (payload.type === 'violation') cspEvents.push(payload);
+      }
       if (msg.id && this.pending.has(msg.id)) {
         const { resolve, reject } = this.pending.get(msg.id);
         this.pending.delete(msg.id);
@@ -183,11 +194,14 @@ try {
         const cdp = new CDP(page.webSocketDebuggerUrl);
         await cdp.send('Page.enable');
         await cdp.send('Runtime.enable');
+        await cdp.send('Runtime.addBinding', { name: '__unfancyCspReport' });
         // Collect CSP violations from every document that ever loads here.
         await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `
-          window.__cspViolations = [];
+          window.__unfancyCspInstalled = true;
+          const documentId = crypto.randomUUID();
+          window.__unfancyCspReport(JSON.stringify({type:'installed', document:documentId}));
           document.addEventListener('securitypolicyviolation', (e) => {
-            window.__cspViolations.push({ directive: e.violatedDirective, uri: (e.sourceFile || e.documentURI || ''), blocked: (e.blockedURL || '') });
+            window.__unfancyCspReport(JSON.stringify({type:'violation', document:documentId, directive:e.violatedDirective, blocked:e.blockedURI}));
           });
         ` });
         return cdp;
@@ -201,6 +215,12 @@ try {
   assert(await evalJs(cdp, `document.body.dataset.staticPage === 'steam'`), '/steam/ is served as the static steam page');
   assert(await evalJs(cdp, `!!document.querySelector('main #steam')`), '/steam/ shows the Steam fragment');
   assert(await evalJs(cdp, `document.title === 'Unfancy - Steam Statistiken'`), '/steam/ has its own title');
+  assert(await evalJs(cdp, `window.__unfancyCspInstalled === true`), 'CSP collector is installed in the cold document');
+  if (cspNegative) {
+    // Deterministic violation; CSP blocks this before any network request.
+    await evalJs(cdp, `fetch('https://steam.api.nirlau.de/currently-playing?steamid=76561198159661156').catch(() => null)`);
+    await waitFor(cdp, `document.readyState === 'complete'`, 'cold document complete');
+  }
 
   // 2. Service worker becomes active (explicit state polling, no fixed sleep).
   const swActive = await evalJs(cdp, `(async () => {
@@ -271,12 +291,11 @@ try {
   await waitFor(cdp, `!!document.querySelector('main #socials')`, '/socials/ renders via nav');
   assert(await evalJs(cdp, `!!document.querySelector('main #socials')`), '/socials/ renders its fragment');
 
-  // 9. CSP enforcement: no violation happened anywhere in this run (page,
-  //    workers, live API reads, embeds).
-  await new Promise(resolve => setTimeout(resolve, 1000)); // give late embed loads a chance to report
-  const violations = await evalJs(cdp, `window.__cspViolations || []`);
-  assert(Array.isArray(violations) && violations.length === 0,
-    `no Content-Security-Policy violations: ${JSON.stringify(violations)}`);
+  // Bounded observation, not an assertion of completed upstream/late embeds.
+  assert(await evalJs(cdp, `window.__unfancyCspInstalled === true`), 'CSP collector is installed in the final document');
+  assert(collectorDocuments.size >= 3, 'CSP collector reports across document changes');
+  assert(cspEvents.length === 0,
+    `no Content-Security-Policy violations across documents: ${JSON.stringify(cspEvents)}`);
 
   console.log('E2E browser regression: all assertions passed');
   cdp.close();

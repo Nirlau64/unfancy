@@ -86,7 +86,8 @@ unfancy/
     ├── build-routes.mjs # Erzeugt die statischen Routen (node scripts/build-routes.mjs)
     ├── make-icons.py    # Erzeugt die optimierten Icons aus assets/icon-source.png
     ├── e2e-browser.mjs  # Browser-Regression (Service-Worker, Router, CSP) via CDP
-    └── e2e-mutant.mjs   # Test-the-Test: Baseline grün + Cache-Poisoning-Mutant muss spezifisch scheitern
+    ├── e2e-mutant.mjs   # Cache-Poisoning-Mutant muss spezifisch scheitern
+    └── e2e-csp-negative.mjs # CSP-Verstoß muss Dokumentwechsel überleben
 ```
 
 Browser-Regression und Mutant-Test laufen mit einem lokalen Headless-Chrome:
@@ -94,9 +95,15 @@ Browser-Regression und Mutant-Test laufen mit einem lokalen Headless-Chrome:
 wartet deterministisch auf das Bootstrap-Ready-Marker-Attribut
 (`documentElement.dataset.unfancyReady`) und Router-/SW-Zustände statt auf
 feste Sleeps, prüft echtes Home-Fragment-Inhalte nach `/steam/`-Direktload
-plus Vor/Zurück-Navigation und sammelt `securitypolicyviolation`-Events —
-jede CSP-Verletzung (auch bei Live-API-Reads und Embeds) lässt den Lauf
-scheitern.
+plus Vor/Zurück-Navigation. Beobachtete `securitypolicyviolation`-Events werden
+im Node-Prozess über Dokumentwechsel hinweg behalten. Die Negativkontrolle
+`node scripts/e2e-csp-negative.mjs` entfernt den Steam-Host ausschließlich in
+Test-HTTP-Antworten und verlangt einen `connect-src`-Fehler nach Dokumentwechsel.
+Dies ist eine zeitlich begrenzte CSP-Beobachtung, **kein** Nachweis erfolgreicher
+Antworten, vollständiger später Embed-Requests oder erfolgreicher Verarbeitung
+aller API-Daten. Initiierter Request, erhaltene Response und verarbeitete Daten
+sind unterschiedliche Nachweise; die Suite behauptet nur die Routing-/SW-
+Assertions und die erfassten CSP-Ereignisse.
 
 Die statischen Routen werden aus `index.html` + `pages/*.html` generiert. Nach
 Änderungen an der Shell oder Fragmenten: `node scripts/build-routes.mjs` ausführen
