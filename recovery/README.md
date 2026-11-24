@@ -54,7 +54,11 @@ Payloads referenzieren den Pin über die Annotation `workers/message`.
   `buildPayloads({ outDir })` — schreibt **nie** ins Repo; Byte-Drift muss der
   Aufrufer per Bytevergleich feststellen (siehe Test), Drift **failt**, wird nie
   still überschrieben.
-- `recovery/generated/<worker>.deploy.json` — exakte PUT-Multipart-Spezifikation:
+- `recovery/generated/<worker>.deploy.json` — exakte Upload-Pin-Quelle (die
+  historische PUT-Spezifikation des gefrorenen Runners; der staged-runner nutzt
+  sie AUSSCHLIESSLICH als Pin-Quelle und baut die Upload-Metadaten als strikte
+  Teilmenge: nur `main_module`, `compatibility_date`, `compatibility_flags`,
+  `bindings type:'inherit'`):
   - Query `bindings_inherit=strict` (fehlert mit API-Error **10057**, wenn ein
     `inherit`-Binding nicht auflösbar wäre, statt es still zu droppen).
   - Alle Live-Bindings als `{type:"inherit", name}` — **Werte verlassen Cloudflare
@@ -85,7 +89,7 @@ Payloads referenzieren den Pin über die Annotation `workers/message`.
     spotify-/riot-/steam-proxy), Content-Type `application/javascript+module`.
   - **Byte-Pins:** `metadata_sha256` (exaktes Multipart-Metadata-JSON) und
     `part_sha256` (exakte Modul-Bytes) sind im Payload gepinnt; der Runner berechnet
-    vor dem Senden nach und bricht bei jeder Abweichung VOR dem PUT ab.
+    vor dem Senden nach und bricht bei jeder Abweichung VOR dem Upload ab.
   - **Pre-Apply-Drift-Guards** (getrennt von den Post-Write-Guards):
     1. aktives Deployment === gepinnte Deployment-ID **und** gepinnte Version-ID;
     2. neueste Upload-Version === gepinnte aktive Version (`inherit` löst gegen die
@@ -100,16 +104,20 @@ Payloads referenzieren den Pin über die Annotation `workers/message`.
   `{strategy:"percentage", versions:[{version_id:<Pin>, percentage:100}]}`.
   Kein Statuspaket mit `null`-Feldern. **Pin ist historisch** (Discovery-Snapshot
   2026-11-24). Der Pre-Rollback-Guard läuft gegen die **NEU ERZEUGTE EIGENE Version**
-  (Runtime-Zustand aus der PUT-Antwort, kein hartkodierter Pin):
+  (Runtime-Zustand aus der Versions-Upload-Antwort `result.id` — UUID —, kein
+  hartkodierter Pin):
   - fremde Version aktiv → STOP (fremdes zwischengeschaltetes Deployment);
-  - alter Pin noch aktiv → Rollback **SKIPP** („PUT hat nie gewirkt" — ein Rollback
-    „auf den alten Pin NACH dem Apply" ist unmöglich und wird nicht versucht);
+  - alter Pin noch aktiv → Rollback **SKIPP** (die eigene Version ist nur STAGED —
+    es gab keine Aktivierung, ein Rollback ist nicht nötig);
   - eigene neue Version aktiv → Rollback freigegeben; vorher geprüft, dass die alte
-    Version noch existiert (`GET versions/{pin}` 200 — außer spotify-proxy, wo dieser
-    Read verboten ist; dort bleibt nur der Deployments-Guard).
-  - **PUT gescheitert/unverändert → kein Rollback.** Unklarer PUT-Ausgang → genau ein
-    Deployments-Readback zur Klassifikation; weiterhin unklar → STOP „unverified",
-    **kein Wiederholen**, kein blindes Re-PUT.
+    Version noch in der Versions-LISTE existiert (`GET .../versions`, erster Eintrag
+    ist der neueste — außer spotify-proxy, wo jeder Versions-Read verboten ist; dort
+    bleibt nur der Deployments-Guard).
+  - **Upload/Activation gescheitert/unverändert → kein Rollback.** Unklarer
+    Write-Ausgang (Transportfehler ODER HTTP/API-Ablehnung — behandelt identisch) →
+    genau ein Deployments-Readback zur Klassifikation; weiterhin unklar → STOP
+    „unverified" mit wahrheitsgemäßem Aktiv-Stand, **kein Wiederholen**, kein blindes
+    Re-Write.
 - `recovery/generated/SHA256SUMS.txt` — Byte-Pins der 8 vollständigen JSON-Dateien
   (Test geprüft gegen die tatsächlichen Dateien).
 - `recovery/readback-projection.mjs` — sichere Settings-Projektion: Bindings nur
@@ -134,9 +142,13 @@ Payloads referenzieren den Pin über die Annotation `workers/message`.
     auch im Fehlerpfad. Verbotene Reads sind strukturell unmöglich.
   - Multiplart-Bytes: Metadata-JSON und Parts werden per SHA-256-Pin geprüft, **rohe
     Bodies werden nie geloggt** (nur Methode/URL/Status/Klassifikationen).
-  - Sequentieller Flow: `preapply()` (3 Guards) → `apply()` (ein PUT, keine Wiederholung)
-    → `postApplyVerify()` (aktives Deployment = eigene neue Version + Safe-Settings-
-    Readback für riot/steam) → bei Verifikationsfehler `rollback()` mit den Guards oben.
+  - Sequentieller Flow (staged-runner): Guards (aktiv===alter Pin, LATEST===alter
+    Pin, volle Safe-Settings) → `POST versions?bindings_inherit=strict` (staged,
+    eine Wiederholung niemals) → Receipt → Aktivierungs-Guards (aktiv UNVERÄNDERT
+    auf dem alten Pin, LATEST === eigene UUID, Settings unverändert) → `POST
+    deployments {percentage:100, force:false}` → postActivationVerify (eigenes
+    Deployment readback; Settings-Readback) → bei Verifikations-/Smoke-Fehler
+    gemeinsamer guarded Rollback (auto + standalone ein Pfad).
 
 ## Lokale Runtime-Smokes (ohne Cloudflare-Konto, ohne echte Spotify-Tokens)
 
@@ -184,7 +196,9 @@ Weitere Tests:
   **nie** gesendet/gepatcht, sondern vor/nach jedem Write vollgleich geprüft.
   `inherit` löst gegen die **LATEST UPLOAD** auf; strict schützt nur vor
   fehlender Auflösung, nicht vor latest≠active-Wertgleichheit — deshalb
-  Guard `latest === pinned active` vor jedem Write. Multipart-Modulparts
+  Guard `latest === pinned active` vor jedem Write, **phasenkorrekt**:
+  nur VOR dem Upload gilt latest===alter Pin, danach (Aktivierung/Rollback)
+  gilt latest===eigene UUID; ein fremder neuester Stand bleibt jederzeit STOP. Multipart-Modulparts
   tragen den **Dateinamen** als Feldnamen. Scope: **steam-/riot-proxy only**;
   Spotify-Worker werden strukturell abgelehnt, verbotene Reads
   (Versions-Detail, Spotify-Settings) sind nicht auf der Allowlist.
@@ -219,11 +233,14 @@ CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/staged-runner.mjs 
 CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/staged-runner.mjs riot-proxy --execute
 
 # 2a) Standalone-Rollback einer eigenen aktivierten Version (Ownership-Guards)
-CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/staged-runner.mjs steam-proxy --rollback <own-version-uuid>
+CF_ACCOUNT_ID=<account-id> CF_API_TOKEN=<token> node recovery/staged-runner.mjs steam-proxy --rollback <receipt.json>
+#    Quelle der Wahrheit ist das VERIFIZIERTE wertfreie Receipt (O_NOFOLLOW,
+#    0600, Schema/Account/Worker/Alte-Pins/eigene UUID/Hashes). Eine beliebige
+#    UUID wird NICHT als Ownership-Nachweis akzeptiert (kein receipt -> keine Writes).
 
 # 3) spotify-proxy: NUR nach separater geprüfter Entscheidung (GATED_READ_SCOPE,
 #    Binding-Drift ohne verbotene Reads unverifizierbar). Der staged-runner
-#    lehnt den Worker strukturell ab; ein manueller PUT ist nicht Teil dieses Runbooks.
+#    lehnt den Worker strukturell ab; manuelle Uploads sind nicht Teil dieses Runbooks.
 
 # 4) spotify-auth: NICHT FREIGEGEBEN (NOT_YET_APPROVED). Rollback-Template ist
 #    bewusst nicht ausführbar (rollback_supported:false).
@@ -234,8 +251,8 @@ Dateien/Logs; der Token lebt nur im Prozess-ENV des Runner-Aufrufs.
 
 ## Funktionstests nach Apply
 
-riot: `/lol/Nirlau/Lauri/euw` 200 und ungültige ID 400; steam:
-`/profile?steamid=<gültige ID>` 200 und `abc` 400 (siehe
+riot: `/lol/Nirlau/Lauri/euw` 200 und ungültige Region 400; steam:
+`/currently-playing?steamid=<gültige SteamID64>` 200 und `abc` 400 (siehe
 `docs/cloudflare-write-plan.md` W1). Live-Baseline 24.11.2026 (Parent, read-only):
 steam 200, riot 200, spotify `/now-playing` 403 mit und ohne Origin `https://nirlau.de`
 — 403 ist VOR Deploy bestehend, kein Token-Read/Rotation daraus ableiten.

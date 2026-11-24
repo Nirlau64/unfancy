@@ -1,4 +1,4 @@
-// Staged replacement runner for steam-proxy and riot-proxy (versions API, NOT the legacy PUT).
+// Staged replacement runner for steam-proxy and riot-proxy (versions API).
 //
 // Contract (official Cloudflare types, cloudflare-python main
 // src/cloudflare/types/workers/scripts/version_create_params.py &
@@ -14,15 +14,16 @@
 //  - bindings type 'inherit' resolves against the LATEST UPLOAD, not the active
 //    version. `bindings_inherit=strict` protects against a missing resolution,
 //    NOT against latest != old-active value equality. Therefore the runner
-//    guards latest === pinned-active before every write.
+//    guards latest === pinned-active before every write; AFTER the staged
+//    upload the same guard runs against the OWN version id instead.
 //  - POST /accounts/{account}/workers/scripts/{worker}/versions?bindings_inherit=strict
 //    creates a STAGED (inactive) version; response result.id MUST be a UUID.
-//    (The legacy PUT returned the script NAME as result.id — that mock era is gone;
+//    (The legacy PUT returned the script NAME as result.id — that path is frozen;
 //    here a non-UUID result.id aborts before any activation.)
 //  - Activation: POST .../deployments JSON {strategy:'percentage',
 //    versions:[{version_id:UUID, percentage:100}], force:false}.
 //
-// Safety contract (inherited from the reviewed runner design):
+// Safety contract:
 //  - Steam/riot ONLY. spotify workers are refused structurally.
 //  - Transport is INJECTED: no network access inside this module. The CLI entry
 //    takes the bearer token EXCLUSIVELY from process.env.CF_API_TOKEN (never
@@ -30,27 +31,33 @@
 //    1Password variables are read or forwarded — the parent owns provisioning).
 //  - Endpoint ALLOWLIST: every request must match an allowlisted pattern before
 //    I/O, including on error paths. Forbidden reads (versions detail GET,
-//    settings GET for spotify) are structurally impossible. No PATCH is ever
-//    issued.
+//    settings GET for spotify) are structurally impossible. No PATCH, no PUT.
 //  - Byte pinning: module part bytes are SHA-256-pinned per part in the payload;
 //    the pinned full metadata JSON of the payload is re-verified against its
 //    metadata_sha256 pin. The STAGED upload metadata is a strict subset built
 //    from the pinned values; its own hash goes into the receipt.
-//  - Multipart: the module part's form field NAME is the FILENAME (not
-//    'script' for every part). The metadata part is name="metadata".
+//  - Multipart: the module part's form field NAME is the FILENAME.
 //  - Receipt BEFORE activation, value-free, O_CREAT|O_EXCL|O_NOFOLLOW mode 0600
-//    under recovery/runs/ (gitignored): account, worker, old deployment id,
-//    old UUID, own UUID, payload and source SHA-256 hashes. No binding values.
+//    under recovery/runs/ (gitignored). Standalone rollback REQUIRES such a
+//    receipt (verified with O_NOFOLLOW, mode 0600 and full pin/schema/hash
+//    validation) — an arbitrary UUID is never accepted as proof of ownership.
+//  - Error hygiene: RunnerAbort details and logs contain ONLY internal reasons,
+//    HTTP status numbers and validated numeric API error codes — never raw API
+//    messages, nested API error payloads or exception texts.
 //  - Unknown write outcome: NO retry, NO blind repeat. Exactly one readback
-//    classifies the outcome; if still unclear -> STOP 'unverified'.
-//  - Smokes run in the SAME apply process via an injected smoke callback; on
-//    smoke failure a guarded rollback runs (old pin readback + smoke again).
+//    classifies the outcome; if still unclear -> STOP 'unverified', reporting
+//    the truthful active state — never a false "inactive" claim.
+//  - Settings-drift recovery definition: script-level settings are never
+//    written by this runner; only the VERSIONED settings of an old version can
+//    be repaired by rolling back. Known drift (safe settings / compat date /
+//    bindings inventory) is therefore a REASON to roll back and never blocks
+//    the rollback. Unknown/unreadable settings state is not classifiable ->
+//    safe STOP with the truthful active id, no false success.
 //  - Read-check-write without server-side compare-and-swap is NOT atomic. Every
 //    guard is re-run freshly immediately before each write, and the post-write
-//    readback classifies what actually happened — but a race between our read
-//    and our write cannot be prevented by this runner. This boundary is real
-//    and documented; the guards shrink the window, they do not close it.
-import { readFileSync, openSync, writeSync, closeSync, mkdirSync, lstatSync, constants as fsConstants } from 'node:fs';
+//    readback classifies what actually happened — the guards shrink the race
+//    window, they do not close it.
+import { readFileSync, openSync, readSync, writeSync, closeSync, fstatSync, mkdirSync, lstatSync, constants as fsConstants } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -59,13 +66,11 @@ import { projectSettings } from './readback-projection.mjs';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HEX64_RE = /^[0-9a-f]{64}$/i;
 const STAGED_RUNNERS = ['steam-proxy', 'riot-proxy'];
-// Official version-create metadata keys. The runner sends the SUBSET below; any
-// other key leaking into the built metadata is a bug and aborts.
-const METADATA_ALLOWED_KEYS = new Set([
-  'main_module', 'annotations', 'bindings', 'cache_options', 'compatibility_date',
-  'compatibility_flags', 'exports', 'keep_bindings', 'package_dependencies', 'usage_model',
-]);
+const RECEIPT_SCHEMA = 'unfancy-recovery-staged-receipt/v1';
+const RECEIPT_MAX_BYTES = 1048576;
+// Official version-create metadata keys. The runner sends the SUBSET below.
 const METADATA_SENT_KEYS = new Set(['main_module', 'compatibility_date', 'compatibility_flags', 'bindings']);
 
 export class RunnerAbort extends Error {
@@ -89,6 +94,23 @@ function isUuid(v) {
   return typeof v === 'string' && UUID_RE.test(v);
 }
 
+function isHex64(v) {
+  return typeof v === 'string' && HEX64_RE.test(v);
+}
+
+// Numeric API error codes only — API message strings and nested objects are
+// never copied into details or logs.
+function apiErrorCodes(json) {
+  const errs = json?.errors;
+  if (!Array.isArray(errs)) return [];
+  return errs.map((e) => Number(e?.code)).filter((n) => Number.isFinite(n));
+}
+
+// Internal failure reason only — exception texts are never propagated.
+function failureReason(err) {
+  return err instanceof RunnerAbort ? err.reason : 'transport_error';
+}
+
 // Complete single-version-100% distribution or nothing. A deployment whose
 // versions array is missing, has several entries, or a percentage !== 100 is
 // MIXED distribution — never a valid guard pin, never a valid rollback target.
@@ -98,16 +120,20 @@ function deploymentInfo(deploymentsJson) {
   const d = list[0];
   const vs = d?.versions;
   if (!Array.isArray(vs) || vs.length !== 1 || vs[0]?.percentage !== 100 || !isUuid(vs[0]?.version_id)) {
-    throw new RunnerAbort('mixed_distribution', { deploymentId: d?.id, versions: Array.isArray(vs) ? vs.length : String(vs) });
+    throw new RunnerAbort('mixed_distribution', { versionCount: Array.isArray(vs) ? vs.length : -1 });
   }
   return { deploymentId: d.id, versionId: vs[0].version_id };
 }
 
-function newestVersionId(versionsJson) {
+// Official versions-list envelope: the FIRST entry is the latest version; each
+// entry carries its id and a created_on metadata. No invented sorting schema.
+function versionsListInfo(versionsJson) {
   const versions = versionsJson?.result?.items ?? versionsJson?.result;
   if (!Array.isArray(versions) || versions.length === 0) throw new RunnerAbort('unreadable_versions');
-  const newest = versions.reduce((a, b) => (String(b.created_on ?? '') > String(a.created_on ?? '') ? b : a));
-  return { newestId: newest.id, newestCreated: newest.created_on, list: versions };
+  for (const v of versions) {
+    if (!v || typeof v !== 'object' || !isUuid(v.id)) throw new RunnerAbort('unreadable_versions');
+  }
+  return { newestId: versions[0].id, newestCreated: versions[0].created_on ?? null, list: versions };
 }
 
 // Compare projected live settings against the pinned full settings. Unknown
@@ -149,6 +175,11 @@ function compareBindingInventory(pinnedInventory, liveBindings) {
   return true;
 }
 
+// Drift of script-level settings that only the VERSIONED settings of the old
+// version can repair — never a reason for this runner to write settings.
+const SETTINGS_DRIFT_REASONS = new Set(['safe_settings_drift', 'compat_date_drift', 'bindings_inventory_drift']);
+const SETTINGS_UNKNOWN_REASONS = new Set(['unknown_settings_field', 'unknown_classification']);
+
 // Build the staged multipart body: metadata part named "metadata", one module
 // part per file with the FILENAME as the form field name.
 function buildMultipartBody(metadataJson, parts) {
@@ -170,10 +201,10 @@ function writeReceipt(receiptPath, content) {
   let st;
   try {
     st = lstatSync(receiptPath);
-    throw new RunnerAbort('receipt_exists', { path: receiptPath, kind: st.isSymbolicLink() ? 'symlink' : 'file' });
+    throw new RunnerAbort('receipt_exists', { kind: st.isSymbolicLink() ? 'symlink' : 'file' });
   } catch (err) {
     if (err instanceof RunnerAbort) throw err;
-    if (err.code !== 'ENOENT') throw new RunnerAbort('receipt_unreadable', { path: receiptPath, code: err.code });
+    if (err.code !== 'ENOENT') throw new RunnerAbort('receipt_unwritable', { code: err.code });
   }
   const dir = dirname(receiptPath);
   let dirSt;
@@ -184,22 +215,98 @@ function writeReceipt(receiptPath, content) {
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       dirSt = lstatSync(dir);
     } else {
-      throw new RunnerAbort('receipt_dir_unreadable', { dir, code: err.code });
+      throw new RunnerAbort('receipt_dir_unreadable', { code: err.code });
     }
   }
-  if (dirSt.isSymbolicLink()) throw new RunnerAbort('receipt_dir_symlink', { dir });
-  if (!dirSt.isDirectory()) throw new RunnerAbort('receipt_dir_not_dir', { dir });
+  if (dirSt.isSymbolicLink()) throw new RunnerAbort('receipt_dir_symlink', {});
+  if (!dirSt.isDirectory()) throw new RunnerAbort('receipt_dir_not_dir', {});
   const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW;
   let fd;
   try {
     fd = openSync(receiptPath, flags, 0o600);
     writeSync(fd, JSON.stringify(content, null, 2) + '\n');
   } catch (err) {
-    throw new RunnerAbort('receipt_write_failed', { path: receiptPath, code: err.code, message: err.message });
+    throw new RunnerAbort('receipt_write_failed', { code: err.code });
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
   return content;
+}
+
+// Read and FULLY validate a rollback receipt (CLI --rollback source of truth).
+// lstat rejects symlinks up front; the O_RDONLY|O_NOFOLLOW open is defense in
+// depth; mode must be exactly 0600. Complete schema: account, worker, old
+// deployment/version pins, own UUID, payload/source/metadata hashes — all
+// re-verified against the actual payload pins. Any failure is a STOP with
+// ZERO network writes (the CLI validates before it ever builds a transport).
+export function readStagedReceipt(receiptPath, { worker, account, payload, rollbackPayload }) {
+  let st;
+  try {
+    st = lstatSync(receiptPath);
+  } catch (err) {
+    throw new RunnerAbort('receipt_refused', { code: err.code });
+  }
+  if (st.isSymbolicLink()) throw new RunnerAbort('receipt_refused', { reason: 'symlink' });
+  if (!st.isFile()) throw new RunnerAbort('receipt_refused', { reason: 'not_a_file' });
+  if ((st.mode & 0o777) !== 0o600) throw new RunnerAbort('receipt_invalid', { check: 'mode_not_0600' });
+  if (st.size <= 0 || st.size > RECEIPT_MAX_BYTES) throw new RunnerAbort('receipt_refused', { reason: 'size' });
+  let fd;
+  try {
+    fd = openSync(receiptPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  } catch (err) {
+    throw new RunnerAbort('receipt_refused', { code: err.code });
+  }
+  let text;
+  try {
+    const size = fstatSync(fd).size;
+    if (size <= 0 || size > RECEIPT_MAX_BYTES) throw new RunnerAbort('receipt_refused', { reason: 'size' });
+    const buf = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      const n = readSync(fd, buf, offset, size - offset, offset);
+      if (n === 0) break;
+      offset += n;
+    }
+    text = buf.subarray(0, offset).toString('utf8');
+  } catch (err) {
+    if (err instanceof RunnerAbort) throw err;
+    throw new RunnerAbort('receipt_refused', { reason: 'read_failed' });
+  } finally {
+    closeSync(fd);
+  }
+  let receipt;
+  try {
+    receipt = JSON.parse(text);
+  } catch {
+    throw new RunnerAbort('receipt_invalid', { check: 'not_json' });
+  }
+  const oldPin = {
+    deploymentId: rollbackPayload.pinned_live_deployment_id,
+    versionId: rollbackPayload.pinned_live_version_id,
+  };
+  const failed = [];
+  const expect = (ok, check) => { if (!ok) failed.push(check); };
+  expect(receipt?.schema === RECEIPT_SCHEMA, 'schema');
+  expect(receipt?.value_free === true, 'value_free');
+  expect(receipt?.account === account, 'account');
+  expect(receipt?.worker === worker, 'worker');
+  expect(receipt?.old_deployment_id === oldPin.deploymentId, 'old_deployment_id');
+  expect(receipt?.old_version_id === oldPin.versionId, 'old_version_id');
+  expect(isUuid(receipt?.own_version_id), 'own_version_id');
+  expect(receipt?.payload_sha256?.deploy === sha256(Buffer.from(JSON.stringify(payload))), 'payload_sha256.deploy');
+  expect(receipt?.payload_sha256?.rollback === sha256(Buffer.from(JSON.stringify(rollbackPayload))), 'payload_sha256.rollback');
+  const src = receipt?.source_sha256 ?? {};
+  for (const p of payload.parts) expect(src?.[p.filename] === payload.part_sha256[p.filename], `source_sha256.${p.filename}`);
+  expect(receipt?.pinned_metadata_sha256 === payload.metadata_sha256, 'pinned_metadata_sha256');
+  expect(isHex64(receipt?.upload_metadata_sha256), 'upload_metadata_sha256');
+  expect(JSON.stringify(receipt?.activation_body) === JSON.stringify({
+    strategy: 'percentage', versions: [{ version_id: receipt?.own_version_id, percentage: 100 }], force: false,
+  }), 'activation_body');
+  expect(JSON.stringify(receipt?.rollback_body) === JSON.stringify({
+    strategy: 'percentage', versions: [{ version_id: oldPin.versionId, percentage: 100 }], force: false,
+  }), 'rollback_body');
+  if (failed.length > 0) throw new RunnerAbort('receipt_invalid', { failed });
+  return receipt;
 }
 
 export function createStagedRunner({
@@ -207,7 +314,7 @@ export function createStagedRunner({
   account,
   payload, // parsed recovery/generated/<worker>.deploy.json — used ONLY as pin source
   rollbackPayload, // parsed recovery/generated/<worker>.rollback.json — used ONLY as pin source
-  transport, // async ({method,url,headers,body}) -> {status, json, headers?}
+  transport, // async ({method,url,headers,body}) -> {status, json}
   log = () => {}, // receives SAFE strings only (no bodies, no binding values)
   readFile = (p) => readFileSync(p),
   repoRoot = REPO_ROOT,
@@ -244,17 +351,18 @@ export function createStagedRunner({
     versionId: rollbackPayload.pinned_live_version_id,
   };
 
-  // Runtime state of THIS run.
+  // Runtime state of THIS run (shared between apply and rollback paths).
   const state = {
-    ownVersionId: null, // staged UUID from the version upload response
+    ownVersionId: null, // staged UUID from the version upload response (or verified receipt)
     receiptPath: null,
-    stagedUpload: false,
-    activated: false,
+    stagedUpload: false, // own staged upload confirmed by THIS run
+    activationAttempted: false, // activation POST issued — outcome may be UNKNOWN
+    activated: false, // own version CONFIRMED active by deployments readback
   };
 
   function assertAllowed(method, url) {
     const rule = allow.find((r) => r.method === method && r.re.test(url));
-    if (!rule) throw new RunnerAbort('endpoint_not_allowed', { method, url, worker });
+    if (!rule) throw new RunnerAbort('endpoint_not_allowed', { method, worker });
     return rule;
   }
 
@@ -262,26 +370,32 @@ export function createStagedRunner({
     assertAllowed(method, url);
     log(`${method} ${url}${opts.logNote ? ' — ' + opts.logNote : ''}`);
     const res = await transport({ method, url, headers: opts.headers ?? {}, body: opts.body });
-    log(`  -> ${res?.status} ${method} ${url}`);
+    log(`  -> ${Number(res?.status)} ${method} ${url}`);
     return res;
   }
 
   // --- read guards ----------------------------------------------------------
   async function readDeployments() {
     const res = await request('GET', deploymentsUrl, { logNote: 'deployments guard' });
-    if (res.status !== 200 || !res.json?.success) throw new RunnerAbort('guard_read_failed', { guard: 'deployments', status: res.status });
+    if (res.status !== 200 || !res.json?.success) {
+      throw new RunnerAbort('guard_read_failed', { guard: 'deployments', status: Number(res.status), apiErrorCodes: apiErrorCodes(res.json) });
+    }
     return deploymentInfo(res.json);
   }
 
   async function readVersions() {
     const res = await request('GET', versionsUrl, { logNote: 'versions list guard' });
-    if (res.status !== 200 || !res.json?.success) throw new RunnerAbort('guard_read_failed', { guard: 'versions_list', status: res.status });
-    return { ...newestVersionId(res.json), raw: res.json };
+    if (res.status !== 200 || !res.json?.success) {
+      throw new RunnerAbort('guard_read_failed', { guard: 'versions_list', status: Number(res.status), apiErrorCodes: apiErrorCodes(res.json) });
+    }
+    return versionsListInfo(res.json);
   }
 
   async function readFullSettings() {
     const res = await request('GET', guardSettings.endpoint.replace('{ACCOUNT_ID}', account), { logNote: 'full safe settings guard (value-free projection)' });
-    if (res.status !== 200 || !res.json?.success) throw new RunnerAbort('guard_read_failed', { guard: 'full_settings', status: res.status });
+    if (res.status !== 200 || !res.json?.success) {
+      throw new RunnerAbort('guard_read_failed', { guard: 'full_settings', status: Number(res.status), apiErrorCodes: apiErrorCodes(res.json) });
+    }
     assertNoUnknownRawFields(res.json.result, guardSettings.pinned_classifications);
     return res.json;
   }
@@ -289,7 +403,7 @@ export function createStagedRunner({
   function checkSettings(json) {
     const projected = projectSettings(json);
     if (projected.compatibility_date !== payload.metadata.compatibility_date) {
-      throw new RunnerAbort('compat_date_drift', { expected: payload.metadata.compatibility_date, live: projected.compatibility_date });
+      throw new RunnerAbort('compat_date_drift', { expected: payload.metadata.compatibility_date });
     }
     compareSafeSettings(
       { ...guardSettings.pinned_full_settings, compatibility_date: payload.metadata.compatibility_date },
@@ -301,9 +415,9 @@ export function createStagedRunner({
     return projected;
   }
 
-  // Full initial guard set: active === pin (complete single-version 100%
-  // distribution), latest upload === pin (inherit resolves against LATEST —
-  // strict does not protect latest/active value equality), full safe settings.
+  // Full guard set. Phase-correct: BEFORE the staged upload latest must equal
+  // the OLD pin (inherit resolves against the latest upload); afterwards the
+  // same check runs against the OWN version id instead.
   async function initialGuards() {
     const active = await readDeployments();
     if (active.deploymentId !== oldPin.deploymentId || active.versionId !== oldPin.versionId) {
@@ -314,14 +428,12 @@ export function createStagedRunner({
       throw new RunnerAbort('latest_upload_drift', { newest: latest.newestId, pinnedActive: oldPin.versionId });
     }
     checkSettings(await readFullSettings());
-    log('initial guards passed (active===pin, latest===pin, full safe settings)');
+    log('guards passed (active===old pin, latest===old pin, full safe settings)');
     return active;
   }
 
   // --- staged upload (inactive version) --------------------------------------
   function buildStagedMetadata() {
-    // Verify the pinned payload metadata integrity first: the payload's
-    // metadata_sha256 must match the actual pinned metadata JSON bytes.
     if (sha256(Buffer.from(JSON.stringify(payload.metadata))) !== payload.metadata_sha256) {
       throw new RunnerAbort('metadata_pin_drift', { metadata_sha256: payload.metadata_sha256 });
     }
@@ -359,25 +471,29 @@ export function createStagedRunner({
     return payload.parts.map((p) => {
       const bytes = readFile(join(repoRoot, p.path));
       if (payload.part_sha256[p.filename] !== sha256(bytes)) {
-        throw new RunnerAbort('part_byte_drift', { part: p.filename, pinned: payload.part_sha256[p.filename], actual: sha256(bytes) });
+        throw new RunnerAbort('part_byte_drift', { part: p.filename });
       }
       return { filename: p.filename, contentType: p.content_type, bytes };
     });
   }
 
+  function activationBodyFor(versionId) {
+    return { strategy: 'percentage', versions: [{ version_id: versionId, percentage: 100 }], force: false };
+  }
+
   function stagedActivationBody() {
-    return { strategy: 'percentage', versions: [{ version_id: state.ownVersionId, percentage: 100 }], force: false };
+    return activationBodyFor(state.ownVersionId);
   }
 
   function rollbackBody() {
-    return { strategy: 'percentage', versions: [{ version_id: oldPin.versionId, percentage: 100 }], force: false };
+    return activationBodyFor(oldPin.versionId);
   }
 
   function receiptContent(uploadMetadataHash) {
     const hashes = {};
     for (const p of payload.parts) hashes[p.filename] = payload.part_sha256[p.filename];
     return {
-      schema: 'unfancy-recovery-staged-receipt/v1',
+      schema: RECEIPT_SCHEMA,
       value_free: true,
       account,
       worker,
@@ -408,7 +524,8 @@ export function createStagedRunner({
   // POST the staged version. On any unclear outcome: exactly ONE readback
   // (versions list), no retry, no blind repeat.
   async function uploadStaged() {
-    // Fresh drift check immediately before this write.
+    // Fresh drift check immediately before this write (latest must still be
+    // the OLD pin — inherit resolves against the latest upload).
     await initialGuards();
 
     const metadata = buildStagedMetadata();
@@ -428,32 +545,32 @@ export function createStagedRunner({
       // Unknown upload outcome: one readback to classify.
       const latest = await readVersions();
       if (latest.newestId === oldPin.versionId) {
-        throw new RunnerAbort('staged_upload_failed_unchanged', { detail: String(err?.message ?? err) });
+        throw new RunnerAbort('staged_upload_failed_unchanged', { detail: failureReason(err) });
       }
-      throw new RunnerAbort('staged_upload_outcome_unverified', { detail: String(err?.message ?? err) });
+      throw new RunnerAbort('staged_upload_outcome_unverified', { detail: failureReason(err) });
     }
     if (res.status !== 200 || !res.json?.success) {
       let latest;
       try {
         latest = await readVersions();
       } catch (e) {
-        throw new RunnerAbort('staged_upload_rejected_and_readback_failed', { status: res.status, apiErrors: res.json?.errors });
+        throw new RunnerAbort('staged_upload_rejected_and_readback_failed', { status: Number(res.status), apiErrorCodes: apiErrorCodes(res.json) });
       }
       if (latest.newestId === oldPin.versionId) {
-        throw new RunnerAbort('staged_upload_failed_unchanged', { status: res.status, apiErrors: res.json?.errors });
+        throw new RunnerAbort('staged_upload_failed_unchanged', { status: Number(res.status), apiErrorCodes: apiErrorCodes(res.json) });
       }
-      throw new RunnerAbort('staged_upload_outcome_unverified', { status: res.status, newest: latest.newestId });
+      throw new RunnerAbort('staged_upload_outcome_unverified', { status: Number(res.status) });
     }
     const id = res.json?.result?.id;
     if (!isUuid(id)) {
       // The legacy PUT returned the script name here. A non-UUID id means the
       // staged version identity is unprovable — NO activation.
-      throw new RunnerAbort('staged_version_invalid_id', { id: typeof id === 'string' ? id : String(id) });
+      throw new RunnerAbort('staged_version_invalid_id', { idKind: typeof id });
     }
     state.ownVersionId = id;
     state.stagedUpload = true;
     writeReceiptBeforeActivation(uploadMetadataHash);
-    log(`staged upload accepted; own version ${id} (INACTIVE — not deployed)`);
+    log(`staged upload accepted; own version ${id} (STAGED, not deployed)`);
     return id;
   }
 
@@ -485,18 +602,21 @@ export function createStagedRunner({
         body: Buffer.from(JSON.stringify(stagedActivationBody())),
         logNote: `activate own version ${state.ownVersionId} @100% (force:false)`,
       });
+      state.activationAttempted = true;
     } catch (err) {
+      state.activationAttempted = true;
       // Unknown activation outcome: exactly one deployments readback.
-      return await classifyActivationOutcome(String(err?.message ?? err));
+      return await classifyActivationOutcome(failureReason(err));
     }
     if (res.status !== 200 || !res.json?.success) {
-      return await classifyActivationOutcome(null, { status: res.status, apiErrors: res.json?.errors });
+      state.activationAttempted = true;
+      return await classifyActivationOutcome(null, { status: Number(res.status), apiErrorCodes: apiErrorCodes(res.json) });
     }
     return await postActivationVerify();
   }
 
   // One readback classifies an unclear activation. NEVER a retry, NEVER a
-  // second activation POST, and never a false success.
+  // second activation POST, and never a false success or false inactive.
   async function classifyActivationOutcome(detail, rejected = {}) {
     let active;
     try {
@@ -504,8 +624,8 @@ export function createStagedRunner({
     } catch (e) {
       throw new RunnerAbort('activation_outcome_unverified', { detail, ...rejected, readback: 'failed' });
     }
-    if (active.versionId === state.ownVersionId && active.deploymentId !== undefined) {
-      state.activated = true;
+    if (active.versionId === state.ownVersionId) {
+      state.activated = true; // own active CONFIRMED before any settings check
       return await postActivationVerify({ classified_success: true });
     }
     if (active.versionId === oldPin.versionId) {
@@ -522,63 +642,132 @@ export function createStagedRunner({
       }
       throw new RunnerAbort('post_activation_foreign_deployment', { active, ownVersion: state.ownVersionId });
     }
+    state.activated = true; // CONFIRMED before the settings readback
     checkSettings(await readFullSettings());
-    state.activated = true;
     log(`activation verified: own version ${state.ownVersionId} active at 100%${extra.classified_success ? ' (outcome classified by readback)' : ''}`);
     return active;
   }
 
-  // --- guarded rollback -------------------------------------------------------
-  // Guards: own version must be active; foreign version -> STOP; old pin
-  // active -> SKIP (noop); old UUID must still exist in the versions LIST
-  // (no versions-detail read). force stays false.
-  async function rollback() {
-    const active = await readDeployments();
+  // --- shared guarded rollback (auto recovery AND standalone mode) -----------
+  // ONE consolidated path. Ownership classification first: complete own-100%
+  // distribution active (mixed distribution aborts in deploymentInfo), latest
+  // === own (foreign latest -> STOP), old UUID still in the versions LIST.
+  // Old already active -> NOOP. Known settings drift is a REASON to roll back
+  // (script settings are never written; only the old version's versioned
+  // settings can repair them) and never blocks. Unknown or unreadable
+  // settings state cannot be classified -> safe STOP with the truthful active
+  // id. The rollback write treats transport errors AND HTTP/API rejections
+  // identically: exactly one classification readback, no retry. After a
+  // confirmed old-active readback: full old-state verification (complete 100%
+  // distribution) + settings equality + optional old-contract smoke. The old
+  // deployment RECORD id is reported but not compared — a rollback POST may
+  // legitimately create a new deployment record for the old version.
+  async function guardedRollback({ verifySmoke = false, context }) {
+    let active;
+    try {
+      active = await readDeployments();
+    } catch (e) {
+      if (e instanceof RunnerAbort && e.reason === 'mixed_distribution') throw e;
+      throw new RunnerAbort('rollback_state_unreadable', { from: failureReason(e) });
+    }
     if (active.versionId === oldPin.versionId) {
-      log('rollback SKIPPED: old pin is active again — nothing to roll back');
-      return { skipped: true, reason: 'old_pin_still_active' };
+      log(`rollback NOOP (${context}): old pin is already active`);
+      return { skipped: true, reason: 'old_already_active', active };
     }
     if (active.versionId !== state.ownVersionId) {
       throw new RunnerAbort('rollback_foreign_deployment', { active, ownVersion: state.ownVersionId });
     }
     const versions = await readVersions();
+    if (versions.newestId !== state.ownVersionId) {
+      // A newer FOREIGN staged version exists — rolling back while it would
+      // still be the inherit target is exactly the ambiguity strict cannot
+      // protect against. STOP.
+      throw new RunnerAbort('rollback_latest_foreign', { newest: versions.newestId, own: state.ownVersionId });
+    }
     if (!versions.list.some((v) => v.id === oldPin.versionId)) {
       throw new RunnerAbort('rollback_old_version_gone', { oldVersion: oldPin.versionId });
     }
+    // Settings classification BEFORE the write: drift -> proceed (rollback may
+    // repair versioned settings); unknown/unreadable -> safe STOP truthful.
+    let driftDetected = false;
+    try {
+      checkSettings(await readFullSettings());
+    } catch (e) {
+      if (!(e instanceof RunnerAbort)) throw e;
+      if (SETTINGS_DRIFT_REASONS.has(e.reason)) {
+        driftDetected = true;
+        log(`settings drift detected (${e.reason}) — rollback PROCEEDS: script settings are never written, only the old version's versioned settings can repair this`);
+      } else if (SETTINGS_UNKNOWN_REASONS.has(e.reason)) {
+        throw new RunnerAbort('rollback_settings_unknown', { active, from: e.reason });
+      } else {
+        throw new RunnerAbort('rollback_settings_unreadable', { active, from: e.reason });
+      }
+    }
+
     let res;
     try {
       res = await request('POST', activateUrl, {
         headers: { 'Content-Type': 'application/json' },
         body: Buffer.from(JSON.stringify(rollbackBody())),
-        logNote: `rollback ${worker} -> pinned old version ${oldPin.versionId} @100% (force:false)`,
+        logNote: `rollback ${worker} (${context}) -> old version ${oldPin.versionId} @100% (force:false)`,
       });
     } catch (err) {
-      // Unknown rollback outcome: one deployments readback; if the old pin is
-      // active the rollback took effect, otherwise STOP truthfully.
-      let after;
-      try {
-        after = await readDeployments();
-      } catch (e) {
-        throw new RunnerAbort('rollback_outcome_unverified', { detail: String(err?.message ?? err) });
-      }
-      if (after.versionId === oldPin.versionId) return { skipped: false, verified: true };
-      throw new RunnerAbort('rollback_outcome_unverified', { detail: String(err?.message ?? err), after });
+      return await classifyRollbackOutcome(failureReason(err), verifySmoke, driftDetected);
     }
+    // HTTP/API rejection is treated EXACTLY like a transport failure: unknown
+    // outcome until classified by exactly one readback. No retry either way.
     if (res.status !== 200 || !res.json?.success) {
-      throw new RunnerAbort('rollback_rejected', { status: res.status, apiErrors: res.json?.errors });
+      return await classifyRollbackOutcome(null, verifySmoke, driftDetected, { status: Number(res.status), apiErrorCodes: apiErrorCodes(res.json) });
     }
-    const after = await readDeployments();
-    if (after.versionId !== oldPin.versionId) {
-      throw new RunnerAbort('rollback_readback_mismatch', { after });
+    return await verifyRolledBack({ driftDetected, verifySmoke });
+  }
+
+  // One deployments readback classifies an unclear rollback outcome. NEVER a
+  // retry and never a false success or false inactive claim.
+  async function classifyRollbackOutcome(detail, verifySmoke, driftDetected, rejected = {}) {
+    let after;
+    try {
+      after = await readDeployments();
+    } catch (e) {
+      throw new RunnerAbort('rollback_outcome_unverified', { detail, ...rejected, readback: 'failed' });
     }
-    log(`rollback verified: old version ${oldPin.versionId} active again`);
-    return { skipped: false, verified: true };
+    if (after.versionId === oldPin.versionId) {
+      return await verifyRolledBack({ driftDetected, verifySmoke, classified_success: true });
+    }
+    throw new RunnerAbort('rollback_outcome_unverified', { detail, ...rejected, after });
+  }
+
+  async function verifyRolledBack({ driftDetected, verifySmoke, classified_success = false } = {}) {
+    // Confirmed old-active readback: full old-state verification.
+    const active = await readDeployments();
+    if (active.versionId !== oldPin.versionId) {
+      throw new RunnerAbort('rollback_readback_mismatch', { after: active });
+    }
+    try {
+      checkSettings(await readFullSettings());
+    } catch (e) {
+      if (e instanceof RunnerAbort && SETTINGS_DRIFT_REASONS.has(e.reason)) {
+        // The old version did NOT repair the drift — those settings are not
+        // versioned. Truthful STOP reporting the ACTIVE old state.
+        throw new RunnerAbort('rollback_settings_still_drifted', { active, from: e.reason, driftDetectedBefore: driftDetected });
+      }
+      throw e;
+    }
+    log(`rollback verified (${classified_success ? 'outcome classified by readback' : 'direct'}): old version ${oldPin.versionId} active, deployment record ${active.deploymentId}, settings equal`);
+    if (verifySmoke) await runSmoke('after-rollback');
+    return { skipped: false, verified: true, driftDetectedBefore: driftDetected };
   }
 
   // --- smoke ------------------------------------------------------------------
   async function runSmoke(phase) {
     if (!smoke) throw new RunnerAbort('smoke_callback_required', { phase });
-    await smoke({ phase, worker, ownVersionId: state.ownVersionId, oldVersionId: oldPin.versionId });
+    try {
+      await smoke({ phase, worker, ownVersionId: state.ownVersionId, oldVersionId: oldPin.versionId });
+    } catch (err) {
+      // Smoke error texts are never propagated (they may contain arbitrary
+      // strings): only the failure kind is kept.
+      throw new RunnerAbort('smoke_failed', { phase, kind: err && typeof err.name === 'string' ? err.name : 'unknown' });
+    }
     log(`smoke passed (phase=${phase})`);
   }
 
@@ -595,79 +784,40 @@ export function createStagedRunner({
         stagedThenActivated: true,
       };
     } catch (err) {
+      // Recovery reachability: everything after the activation POST reaches
+      // the guarded rollback as soon as the own version is CONFIRMED active.
+      // `activationAttempted` covers the still-unknown case — the recovery
+      // path then classifies truthfully and never claims "inactive".
       if (state.activated) {
-        // Activation (or smoke) failed after a verified activation: guarded
-        // rollback, old readback, smoke against the old version.
-        log(`apply failed after activation (${err.reason ?? err.message}) — running guarded rollback`);
-        const rb = await rollback();
-        try {
-          await runSmoke('after-rollback');
-        } catch (smokeErr) {
-          throw new RunnerAbort('rollback_smoke_failed', { rollback: rb, detail: String(smokeErr?.message ?? smokeErr) });
-        }
-      } else if (state.stagedUpload) {
-        // Staged but never activated: nothing to roll back — the inactive
-        // version stays uploaded. This is stated honestly, not hidden.
-        log('aborted after staged upload, before activation — the staged version remains INACTIVE (no rollback needed)');
+        log(`apply failed after confirmed activation (${err instanceof RunnerAbort ? err.reason : 'unknown'}) — running guarded rollback`);
+        const rb = await guardedRollback({ verifySmoke: true, context: 'apply recovery' });
+        return { applied: false, rolledBack: true, rollback: rb, cause: err instanceof RunnerAbort ? err.reason : 'unknown' };
+      } else if (state.stagedUpload && !state.activationAttempted) {
+        // Staged, activation never attempted: the staged version stays
+        // INACTIVE — the one case where "inactive" is proven.
+        log('aborted after staged upload, before activation — the staged version remains STAGED/INACTIVE (no rollback needed)');
       }
       throw err;
     }
   }
 
   // --- standalone rollback mode -----------------------------------------------
-  // Verifies OWNERSHIP of the own UUID before touching anything: complete
-  // single-version-100% distribution with own active, latest === own, old UUID
-  // still present in the versions LIST. Old already active -> NOOP. Foreign or
-  // mixed -> STOP. force:false always.
+  // Source of truth is the VERIFIED RECEIPT (CLI --rollback <receipt-path>):
+  // readStagedReceipt validates lstat-no-symlink, mode 0600, O_NOFOLLOW open,
+  // full schema and all hashes before anything is written. The receipt's own
+  // UUID becomes the shared state's own version id — the SAME guardedRollback
+  // path as the auto recovery runs, without the smoke step.
   async function standaloneRollback(ownVersionId) {
-    if (!isUuid(ownVersionId)) throw new RunnerAbort('rollback_requires_own_uuid', { ownVersionId });
-    const active = await readDeployments();
-    if (active.versionId === oldPin.versionId) {
-      log('standalone rollback NOOP: old pin is already active');
-      return { noop: true, reason: 'old_already_active' };
-    }
-    if (active.versionId !== ownVersionId) {
-      throw new RunnerAbort('rollback_foreign_deployment', { active, ownVersionId });
-    }
-    const versions = await readVersions();
-    if (versions.newestId !== ownVersionId) {
-      throw new RunnerAbort('rollback_latest_drift', { newest: versions.newestId, ownVersionId });
-    }
-    if (!versions.list.some((v) => v.id === oldPin.versionId)) {
-      throw new RunnerAbort('rollback_old_version_gone', { oldVersion: oldPin.versionId });
-    }
-    let res;
-    try {
-      res = await request('POST', activateUrl, {
-        headers: { 'Content-Type': 'application/json' },
-        body: Buffer.from(JSON.stringify(rollbackBody())),
-        logNote: `standalone rollback ${worker} -> old version ${oldPin.versionId} @100% (force:false)`,
-      });
-    } catch (err) {
-      let after;
-      try {
-        after = await readDeployments();
-      } catch (e) {
-        throw new RunnerAbort('rollback_outcome_unverified', { detail: String(err?.message ?? err) });
-      }
-      if (after.versionId === oldPin.versionId) return { noop: false, verified: true };
-      throw new RunnerAbort('rollback_outcome_unverified', { detail: String(err?.message ?? err), after });
-    }
-    if (res.status !== 200 || !res.json?.success) {
-      throw new RunnerAbort('rollback_rejected', { status: res.status, apiErrors: res.json?.errors });
-    }
-    const after = await readDeployments();
-    if (after.versionId !== oldPin.versionId) {
-      throw new RunnerAbort('rollback_readback_mismatch', { after });
-    }
-    return { noop: false, verified: true };
+    if (!isUuid(ownVersionId)) throw new RunnerAbort('rollback_requires_receipt_uuid', {});
+    state.ownVersionId = ownVersionId;
+    return guardedRollback({ verifySmoke: false, context: 'standalone' });
   }
 
   return {
     initialGuards,
     uploadStaged,
     activate,
-    rollback,
+    rollback: (opts = {}) => guardedRollback({ verifySmoke: true, context: 'manual', ...opts }),
     runApply,
     standaloneRollback,
     state,
@@ -683,67 +833,87 @@ export function createStagedRunner({
 }
 
 // --- CLI ---------------------------------------------------------------------
-// node recovery/staged-runner.mjs <worker>              -> plan-only (default; makes NOTHING)
-// node recovery/staged-runner.mjs <worker> --execute    -> apply via staged version API
-// node recovery/staged-runner.mjs <worker> --rollback <own-uuid> -> standalone rollback
+// node recovery/staged-runner.mjs <worker>                          -> plan-only (default; makes NOTHING)
+// node recovery/staged-runner.mjs <worker> --execute                -> staged apply (guards, staged upload,
+//                                                                      receipt, explicit activation, smoke)
+// node recovery/staged-runner.mjs <worker> --rollback <receipt.json> -> standalone rollback, source of truth is
+//                                                                      the verified value-free receipt
 //
 // Bearer: EXCLUSIVELY process.env.CF_API_TOKEN (plus CF_ACCOUNT_ID). No
 // 1Password/op variables are read or forwarded; the parent owns provisioning.
-// No binding value is ever logged. Receipts are value-free.
+// No binding value is ever logged. Receipts are value-free. CLI error output
+// carries internal reasons and numeric status/codes only — never API message
+// strings or exception texts.
 const SMOKE_TARGETS = {
   'steam-proxy': {
     base: 'https://steam.api.nirlau.de',
     origin: 'https://nirlau.de',
     steamid: '76561198159661156', // known repo-config SteamID64 (js/utils.js CONFIG.STEAM_ID)
-    positive: { path: () => `/currently-playing?steamid=76561198159661156`, expect: 'steam-currently-playing' },
-    negative: { path: () => `/currently-playing?steamid=abc`, expectStatus: 400 },
+    positive: { path: `/currently-playing?steamid=76561198159661156`, expect: 'steam-currently-playing' },
+    negative: { path: `/currently-playing?steamid=abc`, expectStatus: 400 },
   },
   'riot-proxy': {
     base: 'https://api.nirlau.de',
     origin: 'https://nirlau.de',
-    positive: { path: () => `/lol/Nirlau/Lauri/euw`, expect: 'json-object' },
-    negative: { path: () => `/lol/Nirlau/Lauri/xx`, expectStatus: 400 },
+    positive: { path: `/lol/Nirlau/Lauri/euw`, expect: 'riot-stats' },
+    negative: { path: `/lol/Nirlau/Lauri/xx`, expectStatus: 400 },
   },
 };
 
-async function cliSmoke(worker) {
+// CLI smoke for one phase. fetch is INJECTABLE so this runs offline in tests.
+//  - phase 'after-activation' (new version): positive 200 + exact schema +
+//    EXACT ACAO reflection + negative 400.
+//  - phase 'after-rollback' (OLD version): positive + exact ACAO only — the
+//    negative-400 hardening must not be demanded from an unhardened old stand.
+export async function cliSmoke(worker, phase = 'after-activation', fetchImpl = globalThis.fetch) {
   const t = SMOKE_TARGETS[worker];
+  if (!t) throw new Error(`cliSmoke: unknown worker ${worker}`);
   const headers = { Origin: t.origin };
   async function get(path) {
-    const res = await fetch(`${t.base}${path}`, { headers });
+    const res = await fetchImpl(`${t.base}${path}`, { headers });
     let json = null;
     try { json = await res.json(); } catch { json = null; }
     return { status: res.status, json, acao: res.headers.get('access-control-allow-origin') };
   }
-  const pos = await get(t.positive.path());
+  const pos = await get(t.positive.path);
   if (pos.status !== 200 || !pos.json || typeof pos.json !== 'object') {
-    throw new Error(`smoke ${worker} positive failed: HTTP ${pos.status} (expected 200 + JSON object)`);
+    throw new Error(`smoke positive failed: HTTP ${Number(pos.status)} (expected 200 + JSON object)`);
   }
   if (t.positive.expect === 'steam-currently-playing') {
     if (!('game' in pos.json) || !('appid' in pos.json)) {
-      throw new Error(`smoke ${worker} positive schema failed: expected {game, appid} keys`);
+      throw new Error('smoke positive schema failed: expected {game, appid} keys');
+    }
+  } else if (t.positive.expect === 'riot-stats') {
+    // Real minimal usable stats schema from the current worker code (non-debug
+    // 200 body): {summonerName, level, ranked, totalMasteryPoints,
+    // masteryTop3, accountCreatedAt, accountCreatedAtApprox, recentMatches}.
+    // An {error: ...} object is never a valid 200 here.
+    if (!('summonerName' in pos.json) || typeof pos.json.summonerName !== 'string'
+      || !('level' in pos.json) || typeof pos.json.level !== 'number'
+      || 'error' in pos.json) {
+      throw new Error('smoke positive schema failed: expected riot stats {summonerName, level} without error key');
     }
   }
-  const neg = await get(t.negative.path());
-  if (neg.status !== t.negative.expectStatus) {
-    throw new Error(`smoke ${worker} negative failed: HTTP ${neg.status} (expected ${t.negative.expectStatus})`);
+  // CORS check is REQUIRED: the allowlisted origin must be reflected EXACTLY.
+  if (pos.acao !== t.origin) {
+    throw new Error('smoke CORS check failed: ACAO does not exactly reflect the allowlisted origin');
   }
-  // CORS check (possible, not fatal if header absent on some paths): the
-  // allowlisted origin must be reflected when present.
-  if (pos.acao && pos.acao !== t.origin) {
-    throw new Error(`smoke ${worker} CORS check failed: ACAO="${pos.acao}" does not reflect ${t.origin}`);
+  if (phase !== 'after-activation') return; // old-contract smoke: no negative requirement
+  const neg = await get(t.negative.path);
+  if (neg.status !== t.negative.expectStatus) {
+    throw new Error(`smoke negative failed: HTTP ${Number(neg.status)} (expected ${t.negative.expectStatus})`);
   }
 }
 
 export async function main(argv, env = process.env) {
   const [worker, ...rest] = argv;
   if (!STAGED_RUNNERS.includes(worker)) {
-    throw new Error(`staged-runner CLI: worker must be one of ${STAGED_RUNNERS.join(', ')} (got: ${String(worker)})`);
+    throw new Error(`staged-runner CLI: worker must be one of ${STAGED_RUNNERS.join(', ')}`);
   }
   const execute = rest.includes('--execute');
   const rbIdx = rest.indexOf('--rollback');
   if (!execute && rbIdx === -1) {
-    console.log(`plan-only (no --execute/--rollback): would run staged apply for ${worker}: guards -> POST versions?bindings_inherit=strict (inactive) -> receipt -> POST deployments {percentage,100,force:false} -> smoke. No requests made.`);
+    console.log(`plan-only (no --execute/--rollback): would run staged apply for ${worker}: guards -> POST versions?bindings_inherit=strict (staged) -> receipt -> POST deployments {percentage,100,force:false} -> smoke. No requests made.`);
     return { planOnly: true };
   }
   if (execute && rbIdx !== -1) throw new Error('staged-runner CLI: --execute and --rollback are mutually exclusive');
@@ -753,6 +923,17 @@ export async function main(argv, env = process.env) {
 
   const payload = JSON.parse(readFileSync(join(REPO_ROOT, 'recovery', 'generated', `${worker}.deploy.json`), 'utf8'));
   const rollbackPayload = JSON.parse(readFileSync(join(REPO_ROOT, 'recovery', 'generated', `${worker}.rollback.json`), 'utf8'));
+
+  let receipt = null;
+  let receiptPath = null;
+  if (rbIdx !== -1) {
+    // Receipt FIRST: full validation with ZERO network writes before anything
+    // else. An arbitrary UUID is never accepted as proof of ownership.
+    receiptPath = rest[rbIdx + 1];
+    if (!receiptPath) throw new Error('staged-runner CLI: --rollback requires a receipt path');
+    receipt = readStagedReceipt(receiptPath, { worker, account, payload, rollbackPayload });
+  }
+
   const transport = async ({ method, url, headers, body }) => {
     const res = await fetch(url, {
       method,
@@ -762,17 +943,21 @@ export async function main(argv, env = process.env) {
     const text = await res.text();
     let json = null;
     try { json = JSON.parse(text); } catch { json = null; }
-    return { status: res.status, json, headers: res.headers };
+    return { status: res.status, json };
   };
-  const runner = createStagedRunner({ worker, account, payload, rollbackPayload, transport, log: (m) => console.log(m), smoke: () => cliSmoke(worker) });
+  const runner = createStagedRunner({
+    worker, account, payload, rollbackPayload, transport,
+    log: (m) => console.log(m),
+    smoke: ({ phase }) => cliSmoke(worker, phase),
+    receiptDir: receiptPath ? dirname(receiptPath) : undefined,
+  });
   if (execute) {
     const out = await runner.runApply();
-    console.log(`STAGED APPLY VERIFIED: ${worker} active on own version ${out.versionId}`);
+    console.log(`STAGED APPLY ${out.rolledBack ? `ROLLED BACK (cause: ${out.cause})` : 'VERIFIED'}: ${worker}`);
     return out;
   }
-  const ownUuid = rest[rbIdx + 1];
-  const out = await runner.standaloneRollback(ownUuid);
-  console.log(`STAGED ROLLBACK ${out.noop ? 'NOOP' : 'VERIFIED'}: ${worker}`);
+  const out = await runner.standaloneRollback(receipt.own_version_id);
+  console.log(`STAGED ROLLBACK ${out.skipped ? 'NOOP' : 'VERIFIED'}: ${worker}`);
   return out;
 }
 
