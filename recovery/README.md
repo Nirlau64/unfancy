@@ -36,6 +36,10 @@ aktiviert wird ausschließlich die bereits receipt-eigene inaktive Version.
 Ein wertfreier Folgereceipt wird mit `O_EXCL|O_NOFOLLOW`, Modus `0600`, vor dem
 Activation-POST angelegt; unbekannte Ergebnisse werden einmal read-backed,
 niemals blind wiederholt. Jeder Guard-Drift stoppt ohne weiteren Write.
+API-Requests einschließlich Response-Body sind auf 12 s begrenzt, jeder
+Smoke-Abschnitt auf 30 s; ein hängender Smoke wird als `transport_error`
+klassifiziert und läuft in dieselbe ownership-guarded Recovery. Der Bridge-
+Watchdog liegt bei 600 s, also oberhalb der begrenzten vollständigen Recovery-Kette.
 
 Der explizite Deployment-Pin muss aus einem unmittelbar vorherigen GET-only
 Preflight stammen; historische Pins nicht wiederverwenden. Nach erfolgreichem

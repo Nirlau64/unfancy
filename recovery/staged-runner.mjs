@@ -69,7 +69,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const STAGED_RUNNERS = ['steam-proxy', 'riot-proxy'];
 const RECEIPT_SCHEMA = 'unfancy-recovery-staged-receipt/v1';
-const RECEIPT_MAX_BYTES = 1048576;
+const RECEIPT_MAX_BYTES = 1_048_576;
+const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
+const DEFAULT_SMOKE_TIMEOUT_MS = 30_000;
 
 
 export class RunnerAbort extends Error {
@@ -367,11 +369,16 @@ export function createStagedRunner({
   smoke, // async ({phase}) -> void; phases 'after-activation' | 'after-rollback'
   resumeReceipt = null,
   expectedActiveDeploymentId = null,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  smokeTimeoutMs = DEFAULT_SMOKE_TIMEOUT_MS,
 }) {
   if (!STAGED_RUNNERS.includes(worker)) {
     throw new RunnerAbort('worker_not_in_scope', { worker, allowed: STAGED_RUNNERS });
   }
   if (!payload || !rollbackPayload || !transport) throw new Error('createStagedRunner: payload, rollbackPayload and transport are required');
+  if (![requestTimeoutMs, smokeTimeoutMs].every((ms) => Number.isSafeInteger(ms) && ms > 0)) {
+    throw new Error('createStagedRunner: timeouts must be positive safe integers');
+  }
 
   const base = payload.endpoint.replace('{ACCOUNT_ID}', account); // .../scripts/<worker>
   const deploymentsUrl = `${base}/deployments?per_page=1`;
@@ -431,9 +438,24 @@ export function createStagedRunner({
   async function request(method, url, opts = {}) {
     assertAllowed(method, url);
     log(`${method} ${url}${opts.logNote ? ' — ' + opts.logNote : ''}`);
-    const res = await transport({ method, url, headers: opts.headers ?? {}, body: opts.body });
-    log(`  -> ${Number(res?.status)} ${method} ${url}`);
-    return res;
+    const controller = new AbortController();
+    let timer;
+    try {
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error('Request deadline exceeded'));
+        }, requestTimeoutMs);
+      });
+      const res = await Promise.race([
+        transport({ method, url, headers: opts.headers ?? {}, body: opts.body, signal: controller.signal }),
+        deadline,
+      ]);
+      log(`  -> ${Number(res?.status)} ${method} ${url}`);
+      return res;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // --- read guards ----------------------------------------------------------
@@ -799,14 +821,27 @@ export function createStagedRunner({
   // --- smoke ------------------------------------------------------------------
   async function runSmoke(phase) {
     if (!smoke) throw new RunnerAbort('smoke_callback_required', { phase });
+    const controller = new AbortController();
+    let timer;
     try {
-      await smoke({ phase, worker, ownVersionId: state.ownVersionId, oldVersionId: oldPin.versionId });
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error('Smoke deadline exceeded'));
+        }, smokeTimeoutMs);
+      });
+      await Promise.race([
+        smoke({ phase, worker, ownVersionId: state.ownVersionId, oldVersionId: oldPin.versionId, signal: controller.signal }),
+        deadline,
+      ]);
     } catch (err) {
       const detail = err instanceof SmokeCheckError
         ? { phase, smokeCategory: err.category, status: err.status }
         : { phase, smokeCategory: 'transport_error' };
       log(`smoke failed (phase=${phase}, category=${detail.smokeCategory}${detail.status === undefined ? '' : `, status=${detail.status}`})`);
       throw new RunnerAbort('smoke_failed', detail);
+    } finally {
+      clearTimeout(timer);
     }
     log(`smoke passed (phase=${phase})`);
   }
@@ -826,21 +861,26 @@ export function createStagedRunner({
         applied: true,
         versionId: state.ownVersionId,
         receipt: state.receiptPath,
-        stagedThenActivated: true,
+        stagedThenActivated: resumeReceipt === null,
+        resumedReceiptVersion: resumeReceipt !== null,
       };
     } catch (err) {
-      // Recovery reachability: everything after the activation POST reaches
-      // the guarded rollback as soon as the own version is CONFIRMED active.
-      // `activationAttempted` covers the still-unknown case — the recovery
-      // path then classifies truthfully and never claims "inactive".
-      if (state.activated) {
-        log(`apply failed after confirmed activation (${err instanceof RunnerAbort ? err.reason : 'unknown'}) — running guarded rollback`);
+      // Once an activation write was issued, its outcome may be unknown even if
+      // the immediate readback timed out. Re-enter the ownership-guarded path:
+      // it rolls back only a confirmed own version, no-ops on the old version,
+      // and stops on foreign or unreadable state.
+      if (state.activationAttempted) {
+        log(`apply failed after activation write (${err instanceof RunnerAbort ? err.reason : 'unknown'}) — running ownership-guarded recovery`);
         const rb = await guardedRollback({ verifySmoke: true, context: 'apply recovery' });
         return { applied: false, rolledBack: true, rollback: rb, cause: err instanceof RunnerAbort ? err.reason : 'unknown' };
       } else if (state.stagedUpload && !state.activationAttempted) {
         // Staged, activation never attempted: the staged version stays
         // INACTIVE — the one case where "inactive" is proven.
-        log('aborted after staged upload, before activation — the staged version remains STAGED/INACTIVE (no rollback needed)');
+        if (resumeReceipt) {
+          log('aborted before activation — receipt-owned version remains STAGED/INACTIVE (no version upload attempted)');
+        } else {
+          log('aborted after staged upload, before activation — the staged version remains STAGED/INACTIVE (no rollback needed)');
+        }
       }
       throw err;
     }
@@ -910,12 +950,12 @@ const SMOKE_TARGETS = {
 //    EXACT ACAO reflection + negative 400.
 //  - phase 'after-rollback' (OLD version): positive + exact ACAO only — the
 //    negative-400 hardening must not be demanded from an unhardened old stand.
-export async function cliSmoke(worker, phase = 'after-activation', fetchImpl = globalThis.fetch) {
+export async function cliSmoke(worker, phase = 'after-activation', fetchImpl = globalThis.fetch, signal) {
   const t = SMOKE_TARGETS[worker];
   if (!t) throw new Error(`cliSmoke: unknown worker ${worker}`);
   const headers = { Origin: t.origin };
   async function get(path) {
-    const res = await fetchImpl(`${t.base}${path}`, { headers });
+    const res = await fetchImpl(`${t.base}${path}`, { headers, signal });
     let json = null;
     try { json = await res.json(); } catch { json = null; }
     return { status: res.status, json, acao: res.headers.get('access-control-allow-origin') };
@@ -938,7 +978,12 @@ export async function cliSmoke(worker, phase = 'after-activation', fetchImpl = g
   if (neg.status !== t.negative.expectStatus) throw new SmokeCheckError('negative_http', neg.status);
 }
 
-export async function main(argv, env = process.env, { fetchFn = fetch, receiptDir } = {}) {
+export async function main(argv, env = process.env, {
+  fetchFn = fetch,
+  receiptDir,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  smokeTimeoutMs = DEFAULT_SMOKE_TIMEOUT_MS,
+} = {}) {
   const [worker, ...rest] = argv;
   if (!STAGED_RUNNERS.includes(worker)) {
     throw new Error(`staged-runner CLI: worker must be one of ${STAGED_RUNNERS.join(', ')}`);
@@ -986,11 +1031,12 @@ export async function main(argv, env = process.env, { fetchFn = fetch, receiptDi
     }
   }
 
-  const transport = async ({ method, url, headers, body }) => {
+  const transport = async ({ method, url, headers, body, signal }) => {
     const res = await fetchFn(url, {
       method,
       headers: { ...headers, Authorization: `Bearer ${token}` },
       body: body && Buffer.isBuffer(body) ? new Uint8Array(body) : body,
+      signal,
     });
     const text = await res.text();
     let json = null;
@@ -1000,10 +1046,12 @@ export async function main(argv, env = process.env, { fetchFn = fetch, receiptDi
   const runner = createStagedRunner({
     worker, account, payload, rollbackPayload, transport,
     log: (m) => console.log(m),
-    smoke: ({ phase }) => cliSmoke(worker, phase, fetchFn),
+    smoke: ({ phase, signal }) => cliSmoke(worker, phase, fetchFn, signal),
     receiptDir: receiptPath ? dirname(receiptPath) : receiptDir,
     resumeReceipt,
     expectedActiveDeploymentId,
+    requestTimeoutMs,
+    smokeTimeoutMs,
   });
   if (execute) {
     const out = await runner.runApply();

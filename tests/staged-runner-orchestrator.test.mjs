@@ -162,6 +162,8 @@ function makeRunner(worker, world, opts = {}) {
     receiptDir: rdir,
     resumeReceipt: opts.resumeReceipt ?? null,
     expectedActiveDeploymentId: opts.expectedActiveDeploymentId ?? null,
+    requestTimeoutMs: opts.requestTimeoutMs,
+    smokeTimeoutMs: opts.smokeTimeoutMs,
     smoke: opts.smoke ?? (async ({ phase }) => { smokeCalls.push(phase); if (world.smokeHook) await world.smokeHook(phase); }),
   });
   return { runner, calls, logs, payload, rollbackPayload, smokeCalls, receiptDir: rdir };
@@ -453,10 +455,10 @@ test('recovery: unknown settings field after own active confirmed -> recovery ST
   await assert.rejects(runner.runApply(), (e) => e instanceof RunnerAbort && e.reason === 'rollback_settings_unknown');
   // Truthful: own version reported as ACTIVE in the abort detail — never inactive.
   assert.equal(runner.state.activated, true);
-  assert.ok(logs.some((l) => l.includes('confirmed activation')));
+  assert.ok(logs.some((l) => l.includes('activation write')));
 });
 
-test('recovery: unreadable deployments in post-activation classification -> truthful UNVERIFIED, no false inactive', async () => {
+test('recovery: unreadable first activation readback is reclassified by ownership guard without retry', async () => {
   const world = makeWorld('steam-proxy');
   world.activationPostError = new Error(`${CANARY} timeout after send`);
   let deploymentsReads = 0;
@@ -477,10 +479,15 @@ test('recovery: unreadable deployments in post-activation classification -> trut
     receiptDir: receiptDirFor(),
     smoke: async () => {},
   });
-  await assert.rejects(failRunner.runApply(), (e) => e instanceof RunnerAbort && e.reason === 'activation_outcome_unverified');
+  const out = await failRunner.runApply();
+  assert.equal(out.applied, false);
+  assert.equal(out.rolledBack, true);
+  assert.equal(out.cause, 'activation_outcome_unverified');
+  assert.equal(out.rollback.skipped, true, 'subsequent guarded read confirmed old version already active');
   assert.equal(failPosts, 2, 'staged upload + activation attempted exactly once (never repeated)');
   assert.equal(failRunner.state.activationAttempted, true);
-  assert.equal(failRunner.state.activated, false, 'UNVERIFIED: never claim success or inactive');
+  assert.equal(failRunner.state.activated, false, 'the first readback did not confirm own activation');
+  assert.equal(world.active.versionId, OLD_PIN['steam-proxy'].ver);
 });
 
 // ---------------------------------------------------------------------------
@@ -803,6 +810,114 @@ test('real CLI resume: verified receipt and expected deployment pin drive inject
   assert.equal(out.versionId, existingReceipt.own_version_id);
   assert.equal(world.active.versionId, existingReceipt.own_version_id);
   assert.equal(calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/versions')).length, 0);
+});
+
+test('receipt-backed CLI smoke timeout reaches guarded rollback and returns failure', async () => {
+  const world = makeWorld('steam-proxy');
+  const first = makeRunner('steam-proxy', world);
+  await first.runner.runApply();
+  const receipt = readStagedReceipt(first.runner.state.receiptPath, {
+    worker: 'steam-proxy', account: ACCOUNT, payload: first.payload, rollbackPayload: first.rollbackPayload,
+  });
+  world.active = { deploymentId: 'd0a26bf1-0645-4493-8422-deecd0e00861', versionId: OLD_PIN['steam-proxy'].ver };
+  const resumed = makeRunner('steam-proxy', world, {
+    receiptDir: first.receiptDir,
+    resumeReceipt: receipt,
+    expectedActiveDeploymentId: world.active.deploymentId,
+    smokeTimeoutMs: 20,
+    smoke: async ({ phase }) => {
+      if (phase === 'after-activation') return new Promise(() => {});
+    },
+  });
+  const out = await resumed.runner.runApply();
+  assert.equal(out.applied, false);
+  assert.equal(out.rolledBack, true);
+  assert.equal(out.cause, 'smoke_failed');
+  assert.equal(world.active.versionId, OLD_PIN['steam-proxy'].ver);
+  assert.equal(resumed.calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/versions')).length, 0);
+  assert.equal(resumed.calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/deployments')).length, 2);
+});
+
+test('real CLI resume: hanging Steam smoke times out, rolls back, then returns failure', async () => {
+  const world = makeWorld('steam-proxy');
+  const first = makeRunner('steam-proxy', world);
+  await first.runner.runApply();
+  const receiptPath = first.runner.state.receiptPath;
+  const existingReceipt = readStagedReceipt(receiptPath, {
+    worker: 'steam-proxy', account: ACCOUNT, payload: first.payload, rollbackPayload: first.rollbackPayload,
+  });
+  const expectedDeployment = 'd0a26bf1-0645-4493-8422-deecd0e00861';
+  world.active = { deploymentId: expectedDeployment, versionId: OLD_PIN['steam-proxy'].ver };
+  const { transport, calls } = makeTransport(world);
+  let hangSmokeOnce = true;
+  let smokeAborted = false;
+  const fetchFn = async (url, init = {}) => {
+    if (new URL(url).hostname === 'steam.api.nirlau.de') {
+      if (world.active.versionId === existingReceipt.own_version_id && hangSmokeOnce) {
+        hangSmokeOnce = false;
+        init.signal?.addEventListener('abort', () => { smokeAborted = true; }, { once: true });
+        return new Promise(() => {});
+      }
+      const status = new URL(url).searchParams.get('steamid') === 'abc' ? 400 : 200;
+      return {
+        status,
+        headers: { get: (name) => name.toLowerCase() === 'access-control-allow-origin' ? 'https://nirlau.de' : null },
+        json: async () => ({ game: null, appid: null }),
+      };
+    }
+    const result = await transport({ method: init.method, url, headers: init.headers, body: init.body ? Buffer.from(init.body) : undefined });
+    return { status: result.status, text: async () => JSON.stringify(result.json) };
+  };
+  await assert.rejects(main([
+    'steam-proxy', '--execute', '--resume', receiptPath,
+    '--expected-active-deployment', expectedDeployment,
+  ], { CF_ACCOUNT_ID: ACCOUNT, CF_API_TOKEN: 'fixture-only' }, { fetchFn, requestTimeoutMs: 100, smokeTimeoutMs: 25 }),
+  (e) => e instanceof RunnerAbort && e.reason === 'apply_failed_recovered');
+  assert.equal(world.active.versionId, OLD_PIN['steam-proxy'].ver);
+  assert.equal(smokeAborted, true, 'the hanging fetch receives the timeout abort');
+  assert.equal(calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/versions')).length, 0);
+  assert.equal(calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/deployments')).length, 2);
+});
+test('real CLI resume: API response-body timeout after activation still classifies and rolls back', async () => {
+  const world = makeWorld('steam-proxy');
+  const first = makeRunner('steam-proxy', world);
+  await first.runner.runApply();
+  const receiptPath = first.runner.state.receiptPath;
+  const existingReceipt = readStagedReceipt(receiptPath, {
+    worker: 'steam-proxy', account: ACCOUNT, payload: first.payload, rollbackPayload: first.rollbackPayload,
+  });
+  const expectedDeployment = 'd0a26bf1-0645-4493-8422-deecd0e00861';
+  world.active = { deploymentId: expectedDeployment, versionId: OLD_PIN['steam-proxy'].ver };
+  const { transport, calls } = makeTransport(world);
+  let hangBodyOnce = true;
+  let bodyAborted = false;
+  const fetchFn = async (url, init = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'steam.api.nirlau.de') {
+      return {
+        status: 200,
+        headers: { get: (name) => name.toLowerCase() === 'access-control-allow-origin' ? 'https://nirlau.de' : null },
+        json: async () => ({ game: null, appid: null }),
+      };
+    }
+    if (init.method === 'GET' && parsed.pathname.endsWith('/deployments')
+      && world.active.versionId === existingReceipt.own_version_id && hangBodyOnce) {
+      hangBodyOnce = false;
+      init.signal?.addEventListener('abort', () => { bodyAborted = true; }, { once: true });
+      return { status: 200, text: async () => new Promise(() => {}) };
+    }
+    const result = await transport({ method: init.method, url, headers: init.headers, body: init.body ? Buffer.from(init.body) : undefined });
+    return { status: result.status, text: async () => JSON.stringify(result.json) };
+  };
+  await assert.rejects(main([
+    'steam-proxy', '--execute', '--resume', receiptPath,
+    '--expected-active-deployment', expectedDeployment,
+  ], { CF_ACCOUNT_ID: ACCOUNT, CF_API_TOKEN: 'fixture-only' }, { fetchFn, requestTimeoutMs: 25, smokeTimeoutMs: 100 }),
+  (e) => e instanceof RunnerAbort && e.reason === 'apply_failed_recovered');
+  assert.equal(world.active.versionId, OLD_PIN['steam-proxy'].ver);
+  assert.equal(bodyAborted, true, 'the API response-body read receives the request timeout abort');
+  assert.equal(calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/versions')).length, 0);
+  assert.equal(calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/deployments')).length, 2);
 });
 
 function fetchMock(statusByPath, headersByPath = {}) {
