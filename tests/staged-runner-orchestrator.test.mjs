@@ -733,9 +733,7 @@ test('receipt-backed resume accepts only receipt-owned latest with exact post-ro
   });
 
   const resumedDeployment = 'd0a26bf1-0645-4493-8422-deecd0e00861';
-  const nextVersion = '22222222-3333-4444-5555-666666666666';
   world.active = { deploymentId: resumedDeployment, versionId: OLD_PIN['steam-proxy'].ver };
-  world.uploadedVersionId = nextVersion;
   const resumed = makeRunner('steam-proxy', world, {
     receiptDir: dirname(receiptPath),
     resumeReceipt: receipt,
@@ -743,7 +741,9 @@ test('receipt-backed resume accepts only receipt-owned latest with exact post-ro
   });
   const out = await resumed.runner.runApply();
   assert.equal(out.applied, true);
-  assert.equal(world.active.versionId, nextVersion);
+  assert.equal(out.versionId, receipt.own_version_id);
+  assert.equal(world.active.versionId, receipt.own_version_id);
+  assert.equal(resumed.calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/versions')).length, 0);
   const latestReceipt = readStagedReceipt(resumed.runner.state.receiptPath, {
     worker: 'steam-proxy', account: ACCOUNT, payload: resumed.payload, rollbackPayload: resumed.rollbackPayload,
   });
@@ -777,10 +777,12 @@ test('real CLI resume: verified receipt and expected deployment pin drive inject
   const first = makeRunner('steam-proxy', world);
   await first.runner.runApply();
   const receiptPath = first.runner.state.receiptPath;
+  const existingReceipt = readStagedReceipt(receiptPath, {
+    worker: 'steam-proxy', account: ACCOUNT, payload: first.payload, rollbackPayload: first.rollbackPayload,
+  });
   const expectedDeployment = 'd0a26bf1-0645-4493-8422-deecd0e00861';
   world.active = { deploymentId: expectedDeployment, versionId: OLD_PIN['steam-proxy'].ver };
-  world.uploadedVersionId = '33333333-4444-5555-6666-777777777777';
-  const { transport } = makeTransport(world);
+  const { transport, calls } = makeTransport(world);
   const fetchFn = async (url, init = {}) => {
     if (new URL(url).hostname === 'steam.api.nirlau.de') {
       const status = new URL(url).searchParams.get('steamid') === 'abc' ? 400 : 200;
@@ -798,7 +800,9 @@ test('real CLI resume: verified receipt and expected deployment pin drive inject
     '--expected-active-deployment', expectedDeployment,
   ], { CF_ACCOUNT_ID: ACCOUNT, CF_API_TOKEN: 'fixture-only' }, { fetchFn });
   assert.equal(out.applied, true);
-  assert.equal(world.active.versionId, world.uploadedVersionId);
+  assert.equal(out.versionId, existingReceipt.own_version_id);
+  assert.equal(world.active.versionId, existingReceipt.own_version_id);
+  assert.equal(calls.filter((c) => c.method === 'POST' && new URL(c.url).pathname.endsWith('/versions')).length, 0);
 });
 
 function fetchMock(statusByPath, headersByPath = {}) {

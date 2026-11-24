@@ -2,15 +2,18 @@
 
 Ziel: reproduzierbare Rollout-Artefakte mit getrenntem Scope je Worker. Der
 reviewte Steam-Versuch wurde nach fehlgeschlagenem Live-Smoke zurückgerollt;
-Riot wurde nicht ausgerollt. **Weitere Apply-Aufrufe sind eingefroren**, bis
-Smoke-Ursache und ein phasenkorrekter Resume-Pfad separat geprüft sind.
-Die lokalen Testbefehle verwenden keinen Cloudflare-Zugang.
+Riot wurde nicht ausgerollt. Der historische Smoke-Grund lässt sich nicht mehr
+rekonstruieren. **Jeder neue Apply bleibt bis zum unabhängigen Review des
+exakten Resume-Commits, des Ausführungswegs und eines frischen Pins gesperrt.**
+Der begrenzte Steam-Resume aktiviert ausschließlich die receipt-eigene bereits
+hochgeladene Version; er lädt keine neue Worker-Version hoch. Die lokalen
+Testbefehle verwenden keinen Cloudflare-Zugang.
 
 ## Scopes (ehrlich getrennt)
 
 | Worker | Apply-Approval | Rollback | Warum |
 | --- | --- | --- | --- |
-| `steam-proxy` | reviewter Live-Versuch **zurückgerollt**, weiterer Apply eingefroren | Altversion + Settings + Smoke verifiziert | neuer Live-Smoke scheiterte |
+| `steam-proxy` | reviewter Live-Versuch **zurückgerollt**; Resume nur mit bestehendem Receipt, frischem Pin und unabhängiger Freigabe | Altversion + Settings + Smoke verifiziert | historischer Smoke-Grund nicht rekonstruierbar |
 | `riot-proxy` | **nicht ausgeführt**, Kette gestoppt | receipt-gestützt vorbereitet | kein verifizierter Steam-Erfolg |
 | `spotify-proxy` | `GATED_READ_SCOPE` | supported, aber ohne Settings-GET | verbotene Reads |
 | `spotify-auth` | `NOT_YET_APPROVED` | **KEIN** supported Rollback | DO-Klassen-Lebenszyklus |
@@ -18,6 +21,35 @@ Die lokalen Testbefehle verwenden keinen Cloudflare-Zugang.
 Der historische PUT-Runner (`recovery/runner.mjs`) ist **eingefroren und NOT
 APPROVED** (CLI failt closed); für steam/riot gilt nur der Weg über
 `recovery/staged-runner.mjs` nach Parent-Review.
+
+## Receipt-gestützter Steam-Resume nach Rollback
+
+`staged-runner.mjs steam-proxy --execute --resume <absoluter Receipt-Pfad> --expected-active-deployment <UUID>`
+ist ausschließlich für den bekannten Rollback-Fall bestimmt. Der vorhandene
+Receipt muss Worker, Account, Quell-/Payload-Hashes, Metadaten und eine gültige
+eigene Versions-UUID bestätigen. Vor Writes prüft der Runner frisch: aktive
+Altversion und vollständige 100-%-Verteilung, exakt den per separatem GET
+ermittelten aktuellen Deployment-Pin, receipt-eigene neueste Version und die
+vollständigen sicheren Settings. Unmittelbar vor Aktivierung werden diese
+Guards erneut geprüft. Es gibt **keinen** `POST /versions` im Resume-Pfad:
+aktiviert wird ausschließlich die bereits receipt-eigene inaktive Version.
+Ein wertfreier Folgereceipt wird mit `O_EXCL|O_NOFOLLOW`, Modus `0600`, vor dem
+Activation-POST angelegt; unbekannte Ergebnisse werden einmal read-backed,
+niemals blind wiederholt. Jeder Guard-Drift stoppt ohne weiteren Write.
+
+Der explizite Deployment-Pin muss aus einem unmittelbar vorherigen GET-only
+Preflight stammen; historische Pins nicht wiederverwenden. Nach erfolgreichem
+Steam-Smoke ist Riot weiterhin ein separater, erneut zu reviewender Schritt.
+
+```sh
+python3 /home/laurin/.hermes/cache/scratch/unfancy_cf_bridge.py preflight steam-proxy --expected-commit <reviewter-Commit>
+
+python3 /home/laurin/.hermes/cache/scratch/unfancy_cf_bridge.py execute steam-proxy --expected-commit <reviewter-Commit> --receipt /home/laurin/projects/unfancy-recovery-workers/recovery/runs/steam-proxy-775ae326-f43b-4ba8-91bb-c0b5203a05a1.json --expected-active-deployment <UUID-aus-frischem-Preflight> --plan
+```
+
+Der zweite Befehl bleibt mit `--plan` netzwerk- und credential-frei. `--plan`
+zu entfernen ist erst nach unabhängiger Freigabe des exakten Commits, Bridge-
+Hashes, Receipts und aktuellen Pins zulässig.
 
 - **spotify-proxy, verbotene Reads:** `GET .../settings` und `GET .../versions/{id}`
   sind für diesen Worker tabu — die Settings-Antwort kann das plain_text-Binding

@@ -58,9 +58,9 @@
 //    readback classifies what actually happened — the guards shrink the race
 //    window, they do not close it.
 import { readFileSync, openSync, readSync, writeSync, closeSync, fstatSync, mkdirSync, lstatSync, constants as fsConstants } from 'node:fs';
+import { randomUUID, createHash } from 'node:crypto';
 import { dirname, join, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
 import { projectSettings } from './readback-projection.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -414,10 +414,10 @@ export function createStagedRunner({
 
   // Runtime state of THIS run (shared between apply and rollback paths).
   const state = {
-    ownVersionId: null, // staged UUID from the version upload response (or verified receipt)
+    ownVersionId: resumeReceipt?.own_version_id ?? null, // staged UUID from upload response or verified receipt
     receiptPath: null,
-    baselineDeploymentId: oldPin.deploymentId,
-    stagedUpload: false, // own staged upload confirmed by THIS run
+    baselineDeploymentId: resumeReceipt ? expectedActiveDeploymentId : oldPin.deploymentId,
+    stagedUpload: resumeReceipt !== null, // true only after a local receipt proves the staged version
     activationAttempted: false, // activation POST issued — outcome may be UNKNOWN
     activated: false, // own version CONFIRMED active by deployments readback
   };
@@ -550,7 +550,9 @@ export function createStagedRunner({
   }
 
   function writeReceiptBeforeActivation(uploadMetadataHash) {
-    const filename = `${worker}-${state.ownVersionId}.json`;
+    const filename = resumeReceipt
+      ? `${worker}-${state.ownVersionId}-resume-${state.baselineDeploymentId}-${randomUUID()}.json`
+      : `${worker}-${state.ownVersionId}.json`;
     const receiptPath = join(receiptDir, filename);
     writeReceipt(receiptPath, receiptContent(uploadMetadataHash));
     state.receiptPath = receiptPath;
@@ -811,7 +813,12 @@ export function createStagedRunner({
 
   async function runApply() {
     await initialGuards();
-    await uploadStaged();
+    if (resumeReceipt) {
+      writeReceiptBeforeActivation(resumeReceipt.upload_metadata_sha256);
+      log(`receipt-backed resume: reusing staged version ${state.ownVersionId}; no version upload`);
+    } else {
+      await uploadStaged();
+    }
     try {
       await activate();
       await runSmoke('after-activation');
