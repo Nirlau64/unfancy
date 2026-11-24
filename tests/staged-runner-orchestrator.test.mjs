@@ -772,6 +772,35 @@ test('receipt-backed resume stops before writes on deployment or latest drift', 
   assert.equal(wrongLatest.calls.filter((c) => c.method === 'POST').length, 0);
 });
 
+test('real CLI resume: verified receipt and expected deployment pin drive injected staged apply', async () => {
+  const world = makeWorld('steam-proxy');
+  const first = makeRunner('steam-proxy', world);
+  await first.runner.runApply();
+  const receiptPath = first.runner.state.receiptPath;
+  const expectedDeployment = 'd0a26bf1-0645-4493-8422-deecd0e00861';
+  world.active = { deploymentId: expectedDeployment, versionId: OLD_PIN['steam-proxy'].ver };
+  world.uploadedVersionId = '33333333-4444-5555-6666-777777777777';
+  const { transport } = makeTransport(world);
+  const fetchFn = async (url, init = {}) => {
+    if (new URL(url).hostname === 'steam.api.nirlau.de') {
+      const status = new URL(url).searchParams.get('steamid') === 'abc' ? 400 : 200;
+      return {
+        status,
+        headers: { get: (name) => name.toLowerCase() === 'access-control-allow-origin' ? 'https://nirlau.de' : null },
+        json: async () => ({ game: null, appid: null }),
+      };
+    }
+    const result = await transport({ method: init.method, url, headers: init.headers, body: init.body ? Buffer.from(init.body) : undefined });
+    return { status: result.status, text: async () => JSON.stringify(result.json) };
+  };
+  const out = await main([
+    'steam-proxy', '--execute', '--resume', receiptPath,
+    '--expected-active-deployment', expectedDeployment,
+  ], { CF_ACCOUNT_ID: ACCOUNT, CF_API_TOKEN: 'fixture-only' }, { fetchFn });
+  assert.equal(out.applied, true);
+  assert.equal(world.active.versionId, world.uploadedVersionId);
+});
+
 function fetchMock(statusByPath, headersByPath = {}) {
   return async (url) => {
     const path = new URL(url).pathname + new URL(url).search;
