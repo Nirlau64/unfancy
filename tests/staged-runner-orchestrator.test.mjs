@@ -160,6 +160,8 @@ function makeRunner(worker, world, opts = {}) {
     readFile: opts.readFile ?? ((p) => readFileSync(p)),
     repoRoot: root,
     receiptDir: rdir,
+    resumeReceipt: opts.resumeReceipt ?? null,
+    expectedActiveDeploymentId: opts.expectedActiveDeploymentId ?? null,
     smoke: opts.smoke ?? (async ({ phase }) => { smokeCalls.push(phase); if (world.smokeHook) await world.smokeHook(phase); }),
   });
   return { runner, calls, logs, payload, rollbackPayload, smokeCalls, receiptDir: rdir };
@@ -721,7 +723,54 @@ test('real CLI apply: recovered smoke failure rejects instead of returning deplo
   assert.equal(calls.filter(({ method }) => method === 'POST').length, 3);
 });
 
-// CLI smoke (offline, injected fetch) — finding 7
+test('receipt-backed resume accepts only receipt-owned latest with exact post-rollback active deployment pin', async () => {
+  const world = makeWorld('steam-proxy');
+  const first = makeRunner('steam-proxy', world);
+  await first.runner.runApply();
+  const receiptPath = first.runner.state.receiptPath;
+  const receipt = readStagedReceipt(receiptPath, {
+    worker: 'steam-proxy', account: ACCOUNT, payload: first.payload, rollbackPayload: first.rollbackPayload,
+  });
+
+  const resumedDeployment = 'd0a26bf1-0645-4493-8422-deecd0e00861';
+  const nextVersion = '22222222-3333-4444-5555-666666666666';
+  world.active = { deploymentId: resumedDeployment, versionId: OLD_PIN['steam-proxy'].ver };
+  world.uploadedVersionId = nextVersion;
+  const resumed = makeRunner('steam-proxy', world, {
+    receiptDir: dirname(receiptPath),
+    resumeReceipt: receipt,
+    expectedActiveDeploymentId: resumedDeployment,
+  });
+  const out = await resumed.runner.runApply();
+  assert.equal(out.applied, true);
+  assert.equal(world.active.versionId, nextVersion);
+  const latestReceipt = readStagedReceipt(resumed.runner.state.receiptPath, {
+    worker: 'steam-proxy', account: ACCOUNT, payload: resumed.payload, rollbackPayload: resumed.rollbackPayload,
+  });
+  assert.equal(latestReceipt.old_deployment_id, resumedDeployment);
+});
+
+test('receipt-backed resume stops before writes on deployment or latest drift', async () => {
+  const world = makeWorld('steam-proxy');
+  const first = makeRunner('steam-proxy', world);
+  await first.runner.runApply();
+  const receipt = readStagedReceipt(first.runner.state.receiptPath, {
+    worker: 'steam-proxy', account: ACCOUNT, payload: first.payload, rollbackPayload: first.rollbackPayload,
+  });
+  world.active = { deploymentId: 'd0a26bf1-0645-4493-8422-deecd0e00861', versionId: OLD_PIN['steam-proxy'].ver };
+  const wrongDeployment = makeRunner('steam-proxy', world, {
+    resumeReceipt: receipt, expectedActiveDeploymentId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  });
+  await assert.rejects(wrongDeployment.runner.runApply(), (e) => e instanceof RunnerAbort && e.reason === 'active_deployment_drift');
+  assert.equal(wrongDeployment.calls.filter((c) => c.method === 'POST').length, 0);
+
+  world.versionIds = ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', ...world.versionIds];
+  const wrongLatest = makeRunner('steam-proxy', world, {
+    resumeReceipt: receipt, expectedActiveDeploymentId: 'd0a26bf1-0645-4493-8422-deecd0e00861',
+  });
+  await assert.rejects(wrongLatest.runner.runApply(), (e) => e instanceof RunnerAbort && e.reason === 'resume_latest_drift');
+  assert.equal(wrongLatest.calls.filter((c) => c.method === 'POST').length, 0);
+});
 
 function fetchMock(statusByPath, headersByPath = {}) {
   return async (url) => {

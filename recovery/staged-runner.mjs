@@ -58,7 +58,7 @@
 //    readback classifies what actually happened — the guards shrink the race
 //    window, they do not close it.
 import { readFileSync, openSync, readSync, writeSync, closeSync, fstatSync, mkdirSync, lstatSync, constants as fsConstants } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { projectSettings } from './readback-projection.mjs';
@@ -335,7 +335,7 @@ export function readStagedReceipt(receiptPath, { worker, account, payload, rollb
   expect(receipt?.value_free === true, 'value_free');
   expect(receipt?.account === account, 'account');
   expect(receipt?.worker === worker, 'worker');
-  expect(receipt?.old_deployment_id === oldPin.deploymentId, 'old_deployment_id');
+  expect(isUuid(receipt?.old_deployment_id), 'old_deployment_id');
   expect(receipt?.old_version_id === oldPin.versionId, 'old_version_id');
   expect(isUuid(receipt?.own_version_id), 'own_version_id');
   expect(receipt?.payload_sha256?.deploy === sha256(Buffer.from(JSON.stringify(payload))), 'payload_sha256.deploy');
@@ -365,6 +365,8 @@ export function createStagedRunner({
   repoRoot = REPO_ROOT,
   receiptDir = join(REPO_ROOT, 'recovery', 'runs'),
   smoke, // async ({phase}) -> void; phases 'after-activation' | 'after-rollback'
+  resumeReceipt = null,
+  expectedActiveDeploymentId = null,
 }) {
   if (!STAGED_RUNNERS.includes(worker)) {
     throw new RunnerAbort('worker_not_in_scope', { worker, allowed: STAGED_RUNNERS });
@@ -395,11 +397,26 @@ export function createStagedRunner({
     deploymentId: rollbackPayload.pinned_live_deployment_id,
     versionId: rollbackPayload.pinned_live_version_id,
   };
+  if (resumeReceipt !== null) {
+    if (worker !== 'steam-proxy'
+      || !isUuid(expectedActiveDeploymentId)
+      || resumeReceipt.schema !== RECEIPT_SCHEMA
+      || resumeReceipt.mode !== 'apply'
+      || resumeReceipt.worker !== worker
+      || resumeReceipt.account !== account
+      || resumeReceipt.old_version_id !== oldPin.versionId
+      || !isUuid(resumeReceipt.own_version_id)) {
+      throw new RunnerAbort('resume_receipt_invalid');
+    }
+  } else if (expectedActiveDeploymentId !== null) {
+    throw new RunnerAbort('resume_pin_without_receipt');
+  }
 
   // Runtime state of THIS run (shared between apply and rollback paths).
   const state = {
     ownVersionId: null, // staged UUID from the version upload response (or verified receipt)
     receiptPath: null,
+    baselineDeploymentId: oldPin.deploymentId,
     stagedUpload: false, // own staged upload confirmed by THIS run
     activationAttempted: false, // activation POST issued — outcome may be UNKNOWN
     activated: false, // own version CONFIRMED active by deployments readback
@@ -460,20 +477,24 @@ export function createStagedRunner({
     return projected;
   }
 
-  // Full guard set. Phase-correct: BEFORE the staged upload latest must equal
-  // the OLD pin (inherit resolves against the latest upload); afterwards the
-  // same check runs against the OWN version id instead.
+  // Full guard set. Normal apply requires active/latest to equal the historical
+  // pin. Receipt-backed resume permits only the receipt's own latest upload and
+  // a separately pinned current deployment id; active version/settings remain
+  // bound to the same old-version baseline.
   async function initialGuards() {
+    const expectedDeploymentId = resumeReceipt ? expectedActiveDeploymentId : oldPin.deploymentId;
+    const expectedLatestId = resumeReceipt ? resumeReceipt.own_version_id : oldPin.versionId;
     const active = await readDeployments();
-    if (active.deploymentId !== oldPin.deploymentId || active.versionId !== oldPin.versionId) {
-      throw new RunnerAbort('active_deployment_drift', { active, pin: oldPin });
+    if (active.deploymentId !== expectedDeploymentId || active.versionId !== oldPin.versionId) {
+      throw new RunnerAbort('active_deployment_drift', { active, expectedDeploymentId, pinnedVersion: oldPin.versionId });
     }
     const latest = await readVersions();
-    if (latest.newestId !== oldPin.versionId) {
-      throw new RunnerAbort('latest_upload_drift', { newest: latest.newestId, pinnedActive: oldPin.versionId });
+    if (latest.newestId !== expectedLatestId) {
+      throw new RunnerAbort(resumeReceipt ? 'resume_latest_drift' : 'latest_upload_drift', { newest: latest.newestId, expectedLatestId });
     }
     checkSettings(await readFullSettings());
-    log('guards passed (active===old pin, latest===old pin, full safe settings)');
+    state.baselineDeploymentId = active.deploymentId;
+    log(`guards passed (active old pin, latest ${resumeReceipt ? 'receipt-owned upload' : 'old pin'}, full safe settings)`);
     return active;
   }
 
@@ -513,7 +534,7 @@ export function createStagedRunner({
       account,
       worker,
       mode: 'apply',
-      old_deployment_id: oldPin.deploymentId,
+      old_deployment_id: state.baselineDeploymentId,
       old_version_id: oldPin.versionId,
       own_version_id: state.ownVersionId,
       payload_sha256: {
@@ -597,11 +618,11 @@ export function createStagedRunner({
     if (!state.receiptPath) throw new RunnerAbort('activate_without_receipt');
 
     const active = await readDeployments();
-    if (active.deploymentId !== oldPin.deploymentId || active.versionId !== oldPin.versionId) {
+    if (active.deploymentId !== state.baselineDeploymentId || active.versionId !== oldPin.versionId) {
       if (active.versionId === state.ownVersionId) {
         throw new RunnerAbort('own_version_already_active', { active });
       }
-      throw new RunnerAbort('pre_activation_active_drift', { active, expected: oldPin });
+      throw new RunnerAbort('pre_activation_active_drift', { active, expectedDeploymentId: state.baselineDeploymentId, expectedVersionId: oldPin.versionId });
     }
     const latest = await readVersions();
     if (latest.newestId !== state.ownVersionId) {
@@ -917,6 +938,11 @@ export async function main(argv, env = process.env, { fetchFn = fetch, receiptDi
   }
   const execute = rest.includes('--execute');
   const rbIdx = rest.indexOf('--rollback');
+  const resumeIdx = rest.indexOf('--resume');
+  const expectedIdx = rest.indexOf('--expected-active-deployment');
+  if (resumeIdx !== -1 && !execute) throw new Error('staged-runner CLI: --resume requires --execute');
+  if (resumeIdx === -1 && expectedIdx !== -1) throw new Error('staged-runner CLI: active-deployment pin requires --resume');
+  if (resumeIdx !== -1 && rbIdx !== -1) throw new Error('staged-runner CLI: --resume and --rollback are mutually exclusive');
   if (!execute && rbIdx === -1) {
     console.log(`plan-only (no --execute/--rollback): would run staged apply for ${worker}: guards -> POST versions?bindings_inherit=strict (staged) -> receipt -> POST deployments {percentage,100,force:false} -> smoke. No requests made.`);
     return { planOnly: true };
@@ -931,12 +957,26 @@ export async function main(argv, env = process.env, { fetchFn = fetch, receiptDi
 
   let receipt = null;
   let receiptPath = null;
-  if (rbIdx !== -1) {
-    // Receipt FIRST: full validation with ZERO network writes before anything
-    // else. An arbitrary UUID is never accepted as proof of ownership.
-    receiptPath = rest[rbIdx + 1];
-    if (!receiptPath) throw new Error('staged-runner CLI: --rollback requires a receipt path');
+  let resumeReceipt = null;
+  let expectedActiveDeploymentId = null;
+  if (rbIdx !== -1 || resumeIdx !== -1) {
+    const idx = resumeIdx !== -1 ? resumeIdx : rbIdx;
+    receiptPath = rest[idx + 1];
+    if (!receiptPath || receiptPath.startsWith('--') || !isAbsolute(receiptPath)) {
+      throw new Error(`staged-runner CLI: --${resumeIdx !== -1 ? 'resume' : 'rollback'} requires an absolute receipt path`);
+    }
+    // Receipt FIRST: full validation with ZERO writes before anything else.
+    // A resume requires both proof of the previous upload and an exact active
+    // deployment-id pin freshly obtained from a separate read-only preflight.
     receipt = readStagedReceipt(receiptPath, { worker, account, payload, rollbackPayload });
+    if (resumeIdx !== -1) {
+      if (worker !== 'steam-proxy') throw new RunnerAbort('resume_worker_not_in_scope');
+      if (expectedIdx === -1 || !rest[expectedIdx + 1] || !isUuid(rest[expectedIdx + 1])) {
+        throw new Error('staged-runner CLI: --resume requires --expected-active-deployment <uuid>');
+      }
+      resumeReceipt = receipt;
+      expectedActiveDeploymentId = rest[expectedIdx + 1];
+    }
   }
 
   const transport = async ({ method, url, headers, body }) => {
@@ -955,6 +995,8 @@ export async function main(argv, env = process.env, { fetchFn = fetch, receiptDi
     log: (m) => console.log(m),
     smoke: ({ phase }) => cliSmoke(worker, phase, fetchFn),
     receiptDir: receiptPath ? dirname(receiptPath) : receiptDir,
+    resumeReceipt,
+    expectedActiveDeploymentId,
   });
   if (execute) {
     const out = await runner.runApply();
