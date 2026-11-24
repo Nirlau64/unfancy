@@ -1,26 +1,17 @@
 # Recovery-Rollout Workers (Branch `recovery/unfancy-workers-20261124`)
 
-Ziel: reproduzierbare Rollout-Artefakte mit getrenntem Scope je Worker. Der
-ursprüngliche Steam-Smoke-Fehler blieb undiagnostiziert. Ein receipt-backed
-Resume am 2026-11-24 wurde von `reviewer-sol` freigegeben und mit frischem
-GET-only-Preflight gestartet; der Live-Smoke schlug danach mit der geheimnisfreien
-Diagnose `phase=after-activation`, `category=negative_http`, `status=200` fehl.
-Der ownership-guarded Rollback ist verifiziert: Altversion
-`6e8f4f79-f12c-4fd9-97f0-70da34d54b31` aktiv zu 100 %, aktuelle
-Deployment-ID `4c387232-d533-4a98-9dc4-0ade5ec160c7`, Settings unverändert;
-die vorhandene staged Version `775ae326-f43b-4ba8-91bb-c0b5203a05a1` bleibt latest.
-Es wurde **kein** neuer Versionsupload ausgeführt. Keine weiteren Apply-Retries,
-bis die Live-Abweichung verstanden und neu unabhängig geprüft ist; Riot bleibt
-außer Scope. Ursache, Body und Querywerte wurden nicht ausgegeben.
-Der begrenzte Steam-Resume aktiviert ausschließlich die receipt-eigene bereits
-hochgeladene Version; die lokalen Testbefehle verwenden keinen Cloudflare-Zugang.
+Ziel: reproduzierbare Rollout-Artefakte mit getrenntem Scope je Worker. **Aktueller Live-Stand (GET-Readback + unabhängiger Browser-Vantage, 24.11.2026):** Pages-Release `714a6566445bc356a0722d8ee26e57ee6fcb8581` ist live; Steam-Version `775ae326-f43b-4ba8-91bb-c0b5203a05a1` und Riot-Version `4d3a9b9c-fc7f-4618-9bc3-d2bf86651cd9` stehen jeweils auf 100 %. Positive Pfade liefern 200, Steam-malformed und Riot-invalid-region liefern 400; CORS und erwartete Schemata sind aus der Frontend-Origin browser-lesbar.
+
+Der frühere Steam-Smoke schlug mit `negative_http` / HTTP 200 fehl und wurde damals ownership-guarded zurückgerollt. Die spätere Aktivierung ist jetzt öffentlich verifiziert; die genaue Ursache des ersten HTTP-200 bleibt wegen des damals nur aggregierten `smoke_failed` **ungeklärt**. Riot wurde vor dem erfolgreichen Steam-Gate promoviert; diese Reihenfolgeabweichung bleibt ausdrücklich dokumentiert. Im abschließenden Live-/Doku-Abgleich gab es keine Cloudflare-Writes. Response-Bodies und Querywerte wurden nicht ausgegeben oder gespeichert; Details und Handles stehen im Abschnitt „Live-Abgleich nach Browser-Vantage — 24.11.2026“.
+
+Der historische PUT-Runner (`recovery/runner.mjs`) bleibt **eingefroren und NOT APPROVED**. Jeder künftige Cloudflare-Write braucht weiterhin einen frischen GET-only-Preflight und ein separates unabhängiges GO für den exakten Pfad. Die lokalen Testbefehle verwenden keinen Cloudflare-Zugang.
 
 ## Scopes (ehrlich getrennt)
 
 | Worker | Apply-Approval | Rollback | Warum |
 | --- | --- | --- | --- |
-| `steam-proxy` | Resume-Code unabhängig freigegeben; Live-Versuch `negative_http` / HTTP 200, verifiziert zurückgerollt; weitere Aktivierung eingefroren bis Ursachenklärung + neuer Review | Altversion aktiv (100 %), Settings unverändert; latest bleibt receipt-eigene staged Version | Live-Endpunkt verhält sich anders als die lokal geprüfte Worker-Implementierung |
-| `riot-proxy` | **nicht ausgeführt**, Kette gestoppt | receipt-gestützt vorbereitet | kein verifizierter Steam-Erfolg |
+| `steam-proxy` | GET-Readback: Version `775ae326-f43b-4ba8-91bb-c0b5203a05a1` aktiv zu 100 %; öffentlicher Positivpfad 200, malformed-ID-Pfad 400, erwartetes Schema/CORS verifiziert | Kein offener Rollback; Deployment `9890961f-fa44-4c92-9f68-5dec9270b524` | Der frühere `negative_http`/200-Fehler wurde zurückgerollt; seine historische Ursache bleibt unbekannt |
+| `riot-proxy` | Version `4d3a9b9c-fc7f-4618-9bc3-d2bf86651cd9` promoviert und aktiv zu 100 %; öffentlicher Positivpfad 200, ungültige Region 400, erwartetes Schema/CORS verifiziert | Kein offener Rollback; Deployment `095b0820-370b-49d4-bbf2-373a3db5e1d6` | Promotion erfolgte vor erfolgreichem Steam-Gate; die Reihenfolgeabweichung ist unten dokumentiert |
 | `spotify-proxy` | `GATED_READ_SCOPE` | supported, aber ohne Settings-GET | verbotene Reads |
 | `spotify-auth` | `NOT_YET_APPROVED` | **KEIN** supported Rollback | DO-Klassen-Lebenszyklus |
 
