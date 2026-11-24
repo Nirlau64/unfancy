@@ -116,9 +116,10 @@ Payloads referenzieren den Pin über die Annotation `workers/message`.
     bleibt nur der Deployments-Guard).
   - **Upload/Activation gescheitert/unverändert → kein Rollback.** Unklarer
     Write-Ausgang (Transportfehler ODER HTTP/API-Ablehnung — behandelt identisch) →
-    genau ein Deployments-Readback zur Klassifikation; weiterhin unklar → STOP
-    „unverified" mit wahrheitsgemäßem Aktiv-Stand, **kein Wiederholen**, kein blindes
-    Re-Write.
+    genau ein Klassifikations-Readback: nach Upload die Versionsliste, nach
+    Aktivierung/Rollback die Deployments. Bestätigte Aktivität erfordert danach
+    die jeweiligen weiteren Verifikationsreads und Smokes. Weiterhin unklar →
+    STOP „unverified", **kein Wiederholen**, kein blindes Re-Write.
 - `recovery/generated/SHA256SUMS.txt` — Byte-Pins der 8 vollständigen JSON-Dateien
   (Test geprüft gegen die tatsächlichen Dateien).
 - `recovery/readback-projection.mjs` — sichere Settings-Projektion: Bindings nur
@@ -194,7 +195,12 @@ Weitere Tests:
   `main_module`, `compatibility_date`, `compatibility_flags`,
   `bindings` (`type:'inherit'`) — die Script-level-Settings
   (`observability`, `logpush`, `tags`, `tail_consumers`, `placement`) werden
-  **nie** gesendet/gepatcht, sondern vor/nach jedem Write vollgleich geprüft.
+  **nie** gesendet/gepatcht. Vor Upload/Aktivierung müssen die vollständigen
+  Safe-Settings gleich sein; nach Aktivierung wird erneut Gleichheit geprüft.
+  Recovery ist die bewusste Ausnahme: klassifizierter bekannter Settings-Drift
+  erlaubt den Versionsrollback, unbekannte/unlesbare Settings stoppen ihn.
+  Bleibt nach dem Rollback Drift bestehen, ist die Recovery **nicht verifiziert**;
+  es folgt kein Settings-Write zur vermeintlichen Reparatur.
   `inherit` löst gegen die **LATEST UPLOAD** auf; strict schützt nur vor
   fehlender Auflösung, nicht vor latest≠active-Wertgleichheit — deshalb
   Guard `latest === pinned active` vor jedem Write, **phasenkorrekt**:
@@ -208,8 +214,10 @@ Weitere Tests:
   Auch Standalone-Rollback benötigt den Altversions-Smoke. Ein fehlgeschlagenes
   Apply endet **auch nach erfolgreicher Wiederherstellung mit Exit 1**; eine
   wiederhergestellte Altversion ist kein Deployment-Erfolg für den nächsten Worker.
-  Unklarer Write-Ausgang: **kein** Retry, genau ein Readback zur
-  Klassifikation. Grenze ehrlich: Read-check-write ohne serverseitiges CAS
+  Unklarer Write-Ausgang: **kein** Retry, einmalige Klassifikation über die
+  Versionsliste (Upload) bzw. Deployments (Aktivierung/Rollback); ein bestätigter
+  Zustand benötigt anschließend die phasenspezifische Vollverifikation.
+  Grenze ehrlich: Read-check-write ohne serverseitiges CAS
   ist **nicht atomar** — die frischen Guards je Write verkleinern das
   Fenster, sie schließen es nicht. **Parent-Review des exakten Runners vor
   jeder echten Invocation ist Pflicht**; ohne Freigabe läuft nur plan-only.

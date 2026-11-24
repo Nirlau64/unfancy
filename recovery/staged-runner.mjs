@@ -809,7 +809,7 @@ export function createStagedRunner({
   // readStagedReceipt validates lstat-no-symlink, mode 0600, O_NOFOLLOW open,
   // full schema and all hashes before anything is written. The receipt's own
   // UUID becomes the shared state's own version id — the SAME guardedRollback
-  // path as the auto recovery runs, without the smoke step.
+  // path as auto recovery, including the mandatory old-contract smoke.
   async function standaloneRollback(ownVersionId) {
     if (!isUuid(ownVersionId)) throw new RunnerAbort('rollback_requires_receipt_uuid', {});
     state.ownVersionId = ownVersionId;
