@@ -1,19 +1,25 @@
 # Recovery-Rollout Workers (Branch `recovery/unfancy-workers-20261124`)
 
 Ziel: reproduzierbare Rollout-Artefakte mit getrenntem Scope je Worker. Der
-reviewte Steam-Versuch wurde nach fehlgeschlagenem Live-Smoke zurückgerollt;
-Riot wurde nicht ausgerollt. Der historische Smoke-Grund lässt sich nicht mehr
-rekonstruieren. **Jeder neue Apply bleibt bis zum unabhängigen Review des
-exakten Resume-Commits, des Ausführungswegs und eines frischen Pins gesperrt.**
+ursprüngliche Steam-Smoke-Fehler blieb undiagnostiziert. Ein receipt-backed
+Resume am 2026-11-24 wurde von `reviewer-sol` freigegeben und mit frischem
+GET-only-Preflight gestartet; der Live-Smoke schlug danach mit der geheimnisfreien
+Diagnose `phase=after-activation`, `category=negative_http`, `status=200` fehl.
+Der ownership-guarded Rollback ist verifiziert: Altversion
+`6e8f4f79-f12c-4fd9-97f0-70da34d54b31` aktiv zu 100 %, aktuelle
+Deployment-ID `4c387232-d533-4a98-9dc4-0ade5ec160c7`, Settings unverändert;
+die vorhandene staged Version `775ae326-f43b-4ba8-91bb-c0b5203a05a1` bleibt latest.
+Es wurde **kein** neuer Versionsupload ausgeführt. Keine weiteren Apply-Retries,
+bis die Live-Abweichung verstanden und neu unabhängig geprüft ist; Riot bleibt
+außer Scope. Ursache, Body und Querywerte wurden nicht ausgegeben.
 Der begrenzte Steam-Resume aktiviert ausschließlich die receipt-eigene bereits
-hochgeladene Version; er lädt keine neue Worker-Version hoch. Die lokalen
-Testbefehle verwenden keinen Cloudflare-Zugang.
+hochgeladene Version; die lokalen Testbefehle verwenden keinen Cloudflare-Zugang.
 
 ## Scopes (ehrlich getrennt)
 
 | Worker | Apply-Approval | Rollback | Warum |
 | --- | --- | --- | --- |
-| `steam-proxy` | reviewter Live-Versuch **zurückgerollt**; Resume nur mit bestehendem Receipt, frischem Pin und unabhängiger Freigabe | Altversion + Settings + Smoke verifiziert | historischer Smoke-Grund nicht rekonstruierbar |
+| `steam-proxy` | Resume-Code unabhängig freigegeben; Live-Versuch `negative_http` / HTTP 200, verifiziert zurückgerollt; weitere Aktivierung eingefroren bis Ursachenklärung + neuer Review | Altversion aktiv (100 %), Settings unverändert; latest bleibt receipt-eigene staged Version | Live-Endpunkt verhält sich anders als die lokal geprüfte Worker-Implementierung |
 | `riot-proxy` | **nicht ausgeführt**, Kette gestoppt | receipt-gestützt vorbereitet | kein verifizierter Steam-Erfolg |
 | `spotify-proxy` | `GATED_READ_SCOPE` | supported, aber ohne Settings-GET | verbotene Reads |
 | `spotify-auth` | `NOT_YET_APPROVED` | **KEIN** supported Rollback | DO-Klassen-Lebenszyklus |
