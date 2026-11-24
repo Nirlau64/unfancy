@@ -130,6 +130,11 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// Deterministic readiness marker for automated tests: the module's global
+// listeners (click/swipe/popstate) are registered once this top-level code
+// has run. Nothing below writes it again.
+document.documentElement.dataset.unfancyReady = 'main';
+
 // Initialization on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
     // Dynamic footer year

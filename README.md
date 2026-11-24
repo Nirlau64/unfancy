@@ -15,7 +15,7 @@ Dank eines integrierten Vanilla JS Routers wechseln die Inhalte (Steam, Spotify,
 *   **Dark-First Design:** Ein konsequentes, augenschonendes Dark-Theme mit CSS-Variablen.
 
 ### 🔒 Sicherheit
-*   **Content Security Policy (CSP):** Einschränkung der erlaubten Script-, Style-, Frame- und Connect-Quellen via `<meta>`-Tag.
+*   **Content Security Policy (CSP):** Enforcing über den `<meta http-equiv="Content-Security-Policy">`-Tag in `index.html` und allen generierten Routen — das ist auf GitHub Pages die **einzige aktive Policy**, da GitHub Pages keine HTTP-Header aus `_headers` auswertet. Host-Liste verifiziert gegen den Code: kein Chart-CDN (Chart.js liegt unter `assets/vendor/`), kein Facebook-SDK, Instagram-Embed-Loader nur `www.instagram.com/embed.js`, alle API-/Riot-Hosts in `connect-src`.
 *   **DOM-basiertes Rendering:** Alle API-Daten werden per `createElement`/`textContent` gerendert — kein `innerHTML` mit unsanitisierten Daten.
 *   **`rel="noopener noreferrer"`:** Auf allen externen Links mit `target="_blank"`.
 
@@ -85,8 +85,18 @@ unfancy/
 └── scripts/
     ├── build-routes.mjs # Erzeugt die statischen Routen (node scripts/build-routes.mjs)
     ├── make-icons.py    # Erzeugt die optimierten Icons aus assets/icon-source.png
-    └── e2e-browser.mjs  # Browser-Regression (Service-Worker, Router) via CDP
+    ├── e2e-browser.mjs  # Browser-Regression (Service-Worker, Router, CSP) via CDP
+    └── e2e-mutant.mjs   # Test-the-Test: Baseline grün + Cache-Poisoning-Mutant muss spezifisch scheitern
 ```
+
+Browser-Regression und Mutant-Test laufen mit einem lokalen Headless-Chrome:
+`node scripts/e2e-browser.mjs` bzw. `node scripts/e2e-mutant.mjs`. Die E2E
+wartet deterministisch auf das Bootstrap-Ready-Marker-Attribut
+(`documentElement.dataset.unfancyReady`) und Router-/SW-Zustände statt auf
+feste Sleeps, prüft echtes Home-Fragment-Inhalte nach `/steam/`-Direktload
+plus Vor/Zurück-Navigation und sammelt `securitypolicyviolation`-Events —
+jede CSP-Verletzung (auch bei Live-API-Reads und Embeds) lässt den Lauf
+scheitern.
 
 Die statischen Routen werden aus `index.html` + `pages/*.html` generiert. Nach
 Änderungen an der Shell oder Fragmenten: `node scripts/build-routes.mjs` ausführen
@@ -109,7 +119,10 @@ Worker-Quellen deployt **keine** Cloudflare-Worker: deren Uploads, Bindings,
 Migrationen und Rollback benötigen einen separat geprüften Rollout.
 
 `_headers` ist lediglich eine Vorlage für kompatible Hosts. Auf GitHub Pages
-aktiviert sie weder CSP-Report-Only noch andere HTTP-Sicherheitsheader. Das bereits
+aktiviert sie weder CSP-Report-Only noch andere HTTP-Sicherheitsheader — die
+enforcing Meta-CSP in `index.html` (und den generierten Routen) ist die aktive
+Policy, die Report-Only-Zeile in `_headers` bleibt im Selben Direktivenstand
+als Defense-in-Depth für einen künftigen Edge-Host. Das bereits
 aktive HSTS wird durch Cloudflare gesetzt und bleibt bei diesem Frontend-Release
 unverändert. Offene Edge-/Worker-Schritte stehen in
 [`docs/high-impact-hardening.md`](docs/high-impact-hardening.md).

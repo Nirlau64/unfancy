@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Enforcing CSP: GitHub Pages does not evaluate _headers, so the meta tag
+         is the only active policy. Host list verified against the code:
+         script-src: only www.instagram.com/embed.js (js/views/socials.js);
+         no chart CDN (Chart.js is vendored at /assets/vendor/chart.umd.js),
+         no Facebook SDK, no platform.instagram.com loader. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' www.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com;">
     <meta name="theme-color" content="#0b0e0f">
     <meta name="description" content="Summoner-Statistiken, Top-Champions und Match-Historie für League of Legends.">
     <meta property="og:title" content="Unfancy - League of Legends">

@@ -1,11 +1,24 @@
 #!/usr/bin/env node
 /**
- * Zero-dependency browser regression for the fragment router.
+ * Zero-dependency browser regression for the fragment router, run against the
+ * REAL hosting surface (same shell, fragments, service worker and — thanks to
+ * the enforcing <meta> CSP — the real Content-Security-Policy).
  *
  * Covers the reported bug: directly loading a static route (/steam/) must not
  * poison the router's 'home' cache with the Steam fragment. Flow:
- *   /steam/ (direct load, service worker active) → click Home → history.back()
- *   → /steam/ → history.forward() → Home. Also checks legacy ?page= routes.
+ *   /steam/ (cold direct load) → SW active → controlled direct load →
+ *   click Home → history.back() → /steam/ → history.forward() → Home →
+ *   legacy ?page= route → /lol/ and /socials/ (live APIs and embeds under CSP).
+ *
+ * Determinism: every step waits on an explicit observable (the main module's
+ * `documentElement.dataset.unfancyReady` readiness marker, router-rendered
+ * content, service-worker state) instead of fixed sleeps.
+ *
+ * The run also installs a `securitypolicyviolation` collector from document
+ * start and fails on ANY violation, which proves the live API/reads
+ * (spotify.api.nirlau.de, steam.api.nirlau.de, api.nirlau.de, rss2json,
+ * ddragon, static.developer.riotgames.com, Instagram embed, YouTube frame)
+ * pass under the new meta CSP. Read-only GETs only; no auth/token calls.
  *
  * Requires a local Chrome/Chromium binary (default: google-chrome). Run with:
  *   node scripts/e2e-browser.mjs [--browser /path/to/chrome]
@@ -45,7 +58,8 @@ function startServer() {
       if (!existsSync(file)) {
         res.writeHead(404); res.end('not found'); return;
       }
-      res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
+      // No caching at all: every page load must exercise the current files.
+      res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
       res.end(readFileSync(file));
     });
     server.listen(PORT, '127.0.0.1', () => resolve(server));
@@ -117,13 +131,29 @@ async function evalJs(cdp, expression, attempts = 4) {
   }
 }
 
+/** Poll an in-page predicate until truthy or the deadline passes. */
+async function waitFor(cdp, predicateExpression, label, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await evalJs(cdp, predicateExpression)) return;
+    if (Date.now() > deadline) throw new Error(`E2E timeout waiting for: ${label}`);
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
 async function navigate(cdp, url) {
   await cdp.send('Page.navigate', { url });
-  // Wait until the document is interactive and the router has initialised.
-  await evalJs(cdp, `new Promise(resolve => {
-    if (document.readyState !== 'loading') return resolve();
-    document.addEventListener('DOMContentLoaded', () => resolve());
-  })`);
+  await waitForBoot(cdp);
+}
+
+/**
+ * Explicit, deterministic bootstrap readiness of the CURRENT document:
+ * the entry module has registered its global listeners AND the DOM is
+ * interactive. Never inferred from a fixed sleep.
+ */
+function waitForBoot(cdp) {
+  return waitFor(cdp, `document.readyState !== 'loading' && document.documentElement.dataset.unfancyReady === 'main'`,
+    'entry module bootstrap (unfancyReady)', 15000);
 }
 
 function assert(cond, message) {
@@ -153,22 +183,28 @@ try {
         const cdp = new CDP(page.webSocketDebuggerUrl);
         await cdp.send('Page.enable');
         await cdp.send('Runtime.enable');
+        // Collect CSP violations from every document that ever loads here.
+        await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+          window.__cspViolations = [];
+          document.addEventListener('securitypolicyviolation', (e) => {
+            window.__cspViolations.push({ directive: e.violatedDirective, uri: (e.sourceFile || e.documentURI || ''), blocked: (e.blockedURL || '') });
+          });
+        ` });
         return cdp;
       } catch (error) { lastError = error; }
     }
     throw lastError;
   })();
 
-  // 1. Direct load of the static /steam/ route.
+  // 1. Cold direct load of the static /steam/ route (no service worker yet).
   await navigate(cdp, `${ORIGIN}/steam/`);
-  await evalJs(cdp, `new Promise(r => setTimeout(r, 800))`);
   assert(await evalJs(cdp, `document.body.dataset.staticPage === 'steam'`), '/steam/ is served as the static steam page');
   assert(await evalJs(cdp, `!!document.querySelector('main #steam')`), '/steam/ shows the Steam fragment');
   assert(await evalJs(cdp, `document.title === 'Unfancy - Steam Statistiken'`), '/steam/ has its own title');
 
-  // 2. Service worker becomes active.
+  // 2. Service worker becomes active (explicit state polling, no fixed sleep).
   const swActive = await evalJs(cdp, `(async () => {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 100; i++) {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg && reg.active) return true;
       await new Promise(r => setTimeout(r, 100));
@@ -177,12 +213,12 @@ try {
   })()`);
   assert(swActive, 'service worker is active');
 
-  // 2b. Controlled direct load: the very first /steam/ load happens before the
-  // service worker controls the page, so reload and verify the SW actually
-  // controls a fresh direct navigation of the static route.
+  // 2b. Controlled direct load, separate from the cold load: reload so the
+  // service worker actually controls a fresh direct navigation of the static
+  // route, and wait for that page's own bootstrap before continuing.
   await navigate(cdp, `${ORIGIN}/steam/`);
   const controlled = await evalJs(cdp, `(async () => {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 100; i++) {
       if (navigator.serviceWorker.controller) return true;
       await new Promise(r => setTimeout(r, 100));
     }
@@ -194,28 +230,53 @@ try {
   assert(await evalJs(cdp, `document.body.dataset.staticPage === 'steam' && !!document.querySelector('main #steam')`),
     'controlled direct load still renders the Steam fragment');
 
-  // 3. Navigate to Home via the nav link (clean path in history).
+  // 3. Navigate to Home via the nav link (SPA path — the listener is provably
+  //    registered because the current document booted: unReady-boot would fall
+  //    back to the anchor's href and mask routing bugs; waitForBoot excludes
+  //    that). Assert real HOME content, not merely "not #steam".
   await evalJs(cdp, `document.querySelector('.nav-link[data-page="home"]').click()`);
-  await evalJs(cdp, `new Promise(r => setTimeout(r, 800))`);
-  assert(await evalJs(cdp, `location.pathname === '/' && !!document.querySelector('main #home') && !document.querySelector('main #steam')`),
-    'Home shows home content on "/" and not the Steam fragment');
+  // Wait only for the routing to have completed (the SPA pushed "/"), then
+  // assert the CONTENT — so a poisoned home cache fails on this specific
+  // assertion, not on a readiness timeout.
+  await waitFor(cdp, `location.pathname === '/'`, 'Home route after /steam/ direct load');
+  assert(await evalJs(cdp, `!!document.querySelector('main #home') && !!document.querySelector('main #home-title') && !document.querySelector('main #steam')`),
+    'Home shows the real home fragment (home-title present), not a poisoned cache');
 
   // 4. history.back() → /steam/ with the Steam fragment (the old bug poisoned
   //    the 'home' cache with the Steam fragment; this must never regress).
-  await evalJs(cdp, `history.back(); new Promise(r => setTimeout(r, 800))`);
-  assert(await evalJs(cdp, `location.pathname === '/steam/'`), 'back returns to /steam/');
-  assert(await evalJs(cdp, `!!document.querySelector('main #steam') && !document.querySelector('main #home')`),
+  await evalJs(cdp, `history.back()`);
+  await waitFor(cdp, `location.pathname === '/steam/'`, 'back returns to /steam/');
+  assert(await evalJs(cdp, `!!document.querySelector('main #steam') && !document.querySelector('main #home-title')`),
     'back/forward shows the Steam fragment, not a poisoned home cache');
 
-  // 5. history.forward() → Home again.
-  await evalJs(cdp, `history.forward(); new Promise(r => setTimeout(r, 800))`);
-  assert(await evalJs(cdp, `location.pathname === '/' && !!document.querySelector('main #home')`),
-    'forward returns to Home with home content');
+  // 5. history.forward() → Home again: still the REAL home fragment.
+  await evalJs(cdp, `history.forward()`);
+  await waitFor(cdp, `location.pathname === '/'`, 'forward returns to Home');
+  assert(await evalJs(cdp, `!!document.querySelector('main #home') && !!document.querySelector('main #home-title')`),
+    'forward returns to Home with the real home content');
 
   // 6. Legacy query route keeps working.
   await navigate(cdp, `${ORIGIN}/?page=spotify`);
-  await evalJs(cdp, `new Promise(r => setTimeout(r, 800))`);
+  await waitFor(cdp, `!!document.querySelector('main #spotify')`, 'legacy ?page=spotify renders Spotify');
   assert(await evalJs(cdp, `!!document.querySelector('main #spotify')`), 'legacy ?page=spotify still renders Spotify');
+
+  // 7. /lol/ via nav: live Riot data reads (ddragon, static.developer.riotgames.com, api.nirlau.de) under the meta CSP.
+  await evalJs(cdp, `document.querySelector('.nav-link[data-page="lol"]').click()`);
+  await waitFor(cdp, `!!document.querySelector('main #lol')`, '/lol/ renders via nav');
+  assert(await evalJs(cdp, `!!document.querySelector('main #lol')`), '/lol/ renders its fragment');
+
+  // 8. /socials/ via nav: Instagram embed script (www.instagram.com) and the
+  //    YouTube nocookie iframe under the meta CSP.
+  await evalJs(cdp, `document.querySelector('.nav-link[data-page="socials"]').click()`);
+  await waitFor(cdp, `!!document.querySelector('main #socials')`, '/socials/ renders via nav');
+  assert(await evalJs(cdp, `!!document.querySelector('main #socials')`), '/socials/ renders its fragment');
+
+  // 9. CSP enforcement: no violation happened anywhere in this run (page,
+  //    workers, live API reads, embeds).
+  await new Promise(resolve => setTimeout(resolve, 1000)); // give late embed loads a chance to report
+  const violations = await evalJs(cdp, `window.__cspViolations || []`);
+  assert(Array.isArray(violations) && violations.length === 0,
+    `no Content-Security-Policy violations: ${JSON.stringify(violations)}`);
 
   console.log('E2E browser regression: all assertions passed');
   cdp.close();

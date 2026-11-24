@@ -1,3 +1,10 @@
 /*
+  Template for hosts that evaluate a _headers file (e.g. Cloudflare Pages).
+  GitHub Pages — the actual host of nirlau.de — does NOT evaluate this file:
+  the enforcing policy is the <meta http-equiv="Content-Security-Policy">
+  tag in index.html (and the generated route pages). The Report-Only header
+  below is defense-in-depth for a future edge deployment and must stay in
+  sync with the meta policy (same directives, Report-Only only — never an
+  enforcing Content-Security-Policy line).
   Strict-Transport-Security: max-age=15552000
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' www.instagram.com connect.facebook.net platform.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com;
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' www.instagram.com; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src fonts.gstatic.com; frame-src www.youtube-nocookie.com www.instagram.com; img-src * data:; connect-src 'self' api.nirlau.de spotify.api.nirlau.de steam.api.nirlau.de api.rss2json.com ddragon.leagueoflegends.com static.developer.riotgames.com;
