@@ -1,5 +1,6 @@
 {
   "worker": "riot-proxy",
+  "rollback_supported": true,
   "method": "POST",
   "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/riot-proxy/deployments",
   "body": {
@@ -20,8 +21,11 @@
   "pre_rollback_assert": {
     "method": "GET",
     "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/riot-proxy/deployments?per_page=1",
-    "assert": "latest deployment id === pinned_live_deployment_id AND its version_id === pinned_live_version_id; otherwise the pin is stale -> regenerate payloads from a fresh read-only snapshot, never apply blindly.",
-    "also_verify_before_apply": "GET .../scripts/{name}/versions/{pinned_live_version_id} must return 200 (version still exists)."
+    "assert": "active deployment must reference the NEWLY CREATED own version id (from this run's PUT response). Foreign version active -> STOP (intervening foreign deployment). Old pin still active -> SKIP rollback (the PUT never took effect or was reverted; rolling back to the old pin against itself is impossible). Never run this guard against a hard-coded pin; the own version id is runtime state.",
+    "also_verify_before_apply": "GET .../scripts/riot-proxy/versions/4b7671ad-c908-4dd6-bfa8-777772c39aca must return 200 (old version still exists)."
   },
-  "caveats": []
+  "failure_semantics": "PUT failed/unchanged -> SKIP rollback (guards detect old pin still active). Unknown PUT outcome -> exactly one deployments readback to classify; still ambiguous -> STOP unverified, no repeat, no blind retry.",
+  "caveats": [
+    "Rollback via pinned version deployment does NOT touch secret values."
+  ]
 }

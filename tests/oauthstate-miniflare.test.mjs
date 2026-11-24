@@ -55,7 +55,10 @@ async function startMiniflare({ withSetupToken } = {}) {
   const mf = new Miniflare({
     scriptPath: 'workers/spotify-auth.js',
     modules: true,
-    compatibilityDate: '2025-10-01',
+    // Must match the pinned payload date exactly: the live worker's empty
+    // compatibility_date resolves to the documented effective default 2021-11-02,
+    // and the deploy payload pins that same explicit date.
+    compatibilityDate: '2021-11-02',
     bindings,
     fetchMock: mockTokenAgent(),
     kvNamespaces: { TOKENS: 'tokenskv' },

@@ -1,9 +1,15 @@
 {
   "worker": "steam-proxy",
+  "apply_approval": "EXECUTABLE",
   "method": "PUT",
   "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy",
   "query": {
     "bindings_inherit": "strict"
+  },
+  "metadata_sha256": "1d71e4e71abefa1acfa4e647a26e22fa8c39732e2a1927d67a2361750aa4f77d",
+  "part_sha256": {
+    "steam-proxy.js": "c11ce0c0426be6d3bfd608037fc6dd506dda55adf38c8ffea49b973e6e3bcffa",
+    "invocation-logging.js": "64925f4d746291451176e9d97d0189171b9dbf7e8bc8e2c6c6fc584572d7107e"
   },
   "metadata": {
     "main_module": "steam-proxy.js",
@@ -14,6 +20,28 @@
       }
     ],
     "compatibility_date": "2025-10-03",
+    "compatibility_flags": [],
+    "tags": [],
+    "logpush": false,
+    "tail_consumers": [],
+    "placement": {},
+    "usage_model": "standard",
+    "observability": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "redact_query_string": false,
+      "logs": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "persist": true,
+        "invocation_logs": true
+      },
+      "traces": {
+        "enabled": false,
+        "persist": true,
+        "head_sampling_rate": 1
+      }
+    },
     "annotations": {
       "workers/message": "unfancy recovery rollout 6dcdd25"
     }
@@ -30,15 +58,102 @@
       "content_type": "application/javascript+module"
     }
   ],
+  "preapply_guards": {
+    "active_deployment": {
+      "method": "GET",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy/deployments?per_page=1",
+      "assert": "result.deployments[0].id === pinned_live_deployment_id AND its versions[0].version_id === pinned_live_version_id; mismatch -> STOP (stale pin)."
+    },
+    "latest_upload": {
+      "method": "GET",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy/versions",
+      "assert": "the newest version id in the versions list === pinned_live_version_id AND the total count equals the pinned snapshot count; any extra/unpublished version -> STOP."
+    },
+    "full_settings": {
+      "skipped": false,
+      "method": "GET",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy/settings",
+      "assert": "projected settings (name/type/resource-id only, readback-projection.mjs) must equal pinned full settings AND the bindings inventory must match live_bindings_inventory exactly; any UNKNOWN field in the live settings result -> STOP (no default handling).",
+      "pinned_full_settings": {
+        "compatibility_flags": [],
+        "tags": [],
+        "logpush": false,
+        "tail_consumers": [],
+        "placement": {},
+        "usage_model": "standard",
+        "observability": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "redact_query_string": false,
+          "logs": {
+            "enabled": true,
+            "head_sampling_rate": 1,
+            "persist": true,
+            "invocation_logs": true
+          },
+          "traces": {
+            "enabled": false,
+            "persist": true,
+            "head_sampling_rate": 1
+          }
+        }
+      },
+      "pinned_classifications": {
+        "compatibility_date": "preserve",
+        "compatibility_flags": "preserve",
+        "tags": "preserve",
+        "logpush": "preserve",
+        "tail_consumers": "preserve",
+        "placement": "preserve",
+        "usage_model": "preserve",
+        "observability": "preserve",
+        "annotations": "n.a.",
+        "cache_options": "n.a.",
+        "limits": "n.a.",
+        "exports": "n.a.",
+        "exports_reconciliation": "n.a."
+      },
+      "live_bindings_inventory": [
+        {
+          "name": "STEAM_API_KEY",
+          "type": "secret_text"
+        }
+      ]
+    }
+  },
   "post_deploy_readback": {
     "method": "GET",
-    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy/settings",
+    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/steam-proxy/deployments?per_page=1",
     "expected_binding_names_sorted": [
       "STEAM_API_KEY"
     ],
     "expected_compat_date": "2025-10-03",
-    "projection": "readback-projection.mjs (name/type/resource-id only, never values)",
-    "abort_rule": "Any deviation (missing/reordered/renamed binding, unexpected type, KV namespace id change, unexpected compatibility_date) -> STOP, run rollback payload for this worker."
+    "expected_full_settings": {
+      "compatibility_flags": [],
+      "tags": [],
+      "logpush": false,
+      "tail_consumers": [],
+      "placement": {},
+      "usage_model": "standard",
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "redact_query_string": false,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "persist": true,
+          "invocation_logs": true
+        },
+        "traces": {
+          "enabled": false,
+          "persist": true,
+          "head_sampling_rate": 1
+        }
+      }
+    },
+    "settings_get": "allowed (secret_text/kv_namespace bindings only), value-free projection via readback-projection.mjs",
+    "abort_rule": "Active deployment must reference the new version id from the PUT response. If a FOREIGN version is active -> STOP. Settings deviations (riot/steam) -> STOP + rollback payload for this worker."
   },
   "function_smoke": "Follow docs/cloudflare-write-plan.md W1 function tests for this worker after operator apply."
 }

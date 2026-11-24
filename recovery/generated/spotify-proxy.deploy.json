@@ -1,9 +1,16 @@
 {
   "worker": "spotify-proxy",
+  "apply_approval": "GATED_READ_SCOPE",
+  "apply_note": "Executable payload exists but the runner scope for this worker is read-restricted: no settings GET, no GET versions/{id}, ever (also on error paths). Pre-apply verification relies on deployments list + versions list only.",
   "method": "PUT",
   "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-proxy",
   "query": {
     "bindings_inherit": "strict"
+  },
+  "metadata_sha256": "1f78df832bd2c2e9b096f49e2e81dbceae4b81387a1e341df2b67a853f72c255",
+  "part_sha256": {
+    "spotify-proxy.js": "2b0a716cab49c6cfc04ab2ee6bf708d264433515d3059a54f3a5e0dbdf18e5c4",
+    "invocation-logging.js": "64925f4d746291451176e9d97d0189171b9dbf7e8bc8e2c6c6fc584572d7107e"
   },
   "metadata": {
     "main_module": "spotify-proxy.js",
@@ -25,6 +32,13 @@
         "name": "TOKENS"
       }
     ],
+    "compatibility_date": "2021-11-02",
+    "compatibility_flags": [],
+    "tags": [],
+    "logpush": false,
+    "tail_consumers": [],
+    "placement": {},
+    "usage_model": "standard",
     "annotations": {
       "workers/message": "unfancy recovery rollout 6dcdd25"
     }
@@ -41,18 +55,61 @@
       "content_type": "application/javascript+module"
     }
   ],
+  "preapply_guards": {
+    "active_deployment": {
+      "method": "GET",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-proxy/deployments?per_page=1",
+      "assert": "result.deployments[0].id === pinned_live_deployment_id AND its versions[0].version_id === pinned_live_version_id; mismatch -> STOP (stale pin)."
+    },
+    "latest_upload": {
+      "method": "GET",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-proxy/versions",
+      "assert": "the newest version id in the versions list === pinned_live_version_id AND the total count equals the pinned snapshot count; any extra/unpublished version -> STOP."
+    },
+    "full_settings": {
+      "skipped": true,
+      "reason": "settings GET is a forbidden read for this worker; only the frozen snapshot inventory is pinned.",
+      "frozen_bindings_inventory": [
+        {
+          "name": "SPOTIFY_CLIENT_ID",
+          "type": "plain_text"
+        },
+        {
+          "name": "SPOTIFY_CLIENT_SECRET",
+          "type": "secret_text"
+        },
+        {
+          "name": "SPOTIFY_REFRESH_TOKEN",
+          "type": "plain_text"
+        },
+        {
+          "name": "TOKENS",
+          "type": "kv_namespace"
+        }
+      ],
+      "binding_drift_safety_note": "Live binding drift is NOT verifiable (settings GET forbidden). bindings_inherit=strict makes the PUT fail (10057) if any inherit-resolvable binding changed; an unexpected extra live binding is NOT covered by strict-inherit and would be silently replaced by the explicit binding list. Accept only after a separate reviewed decision."
+    }
+  },
   "post_deploy_readback": {
     "method": "GET",
-    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-proxy/settings",
+    "endpoint": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/workers/scripts/spotify-proxy/deployments?per_page=1",
     "expected_binding_names_sorted": [
       "SPOTIFY_CLIENT_ID",
       "SPOTIFY_CLIENT_SECRET",
       "SPOTIFY_REFRESH_TOKEN",
       "TOKENS"
     ],
-    "expected_compat_date": "absent-or-empty",
-    "projection": "readback-projection.mjs (name/type/resource-id only, never values)",
-    "abort_rule": "Any deviation (missing/reordered/renamed binding, unexpected type, KV namespace id change, unexpected compatibility_date) -> STOP, run rollback payload for this worker."
+    "expected_compat_date": "2021-11-02",
+    "expected_full_settings": {
+      "compatibility_flags": [],
+      "tags": [],
+      "logpush": false,
+      "tail_consumers": [],
+      "placement": {},
+      "usage_model": "standard"
+    },
+    "settings_get": "FORBIDDEN for this worker (plain_text bindings possible); binding verification is NOT possible — see binding_drift_safety_note",
+    "abort_rule": "Active deployment must reference the new version id from the PUT response. If a FOREIGN version is active -> STOP. Settings deviations (riot/steam) -> STOP + rollback payload for this worker."
   },
   "function_smoke": "Follow docs/cloudflare-write-plan.md W1 function tests for this worker after operator apply."
 }
