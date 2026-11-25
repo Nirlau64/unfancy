@@ -1,8 +1,24 @@
 /**
  * View Controller: Steam
  */
-import { fetchAPI } from '../api.js';
-import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
+import { DataStatusSource, DataStatus, combineDataStatus, fetchAPI } from '../api.js';
+import { CONFIG, minutesToHours, setupSplashHover, preloadImages, renderError, renderSkeleton, renderDataStatusFooter } from '../utils.js';
+
+// Data status sources persist across route visits so a failed refresh can fall
+// back to the last successfully loaded payload (status: stale).
+const steamSources = {
+    profile: new DataStatusSource((signal) => fetchAPI(`${CONFIG.API.STEAM}/profile?steamid=${CONFIG.STEAM_ID}`, false, signal)),
+    owned: new DataStatusSource((signal) => fetchAPI(`${CONFIG.API.STEAM}/owned?steamid=${CONFIG.STEAM_ID}`, false, signal)),
+    // Achievements stay a soft dependency: a failure here must not stale/error the section.
+    achievements: new DataStatusSource(async (signal) => {
+        try {
+            return await fetchAPI(`${CONFIG.API.STEAM}/rarest-achievements?steamid=${CONFIG.STEAM_ID}`, false, signal);
+        } catch (e) {
+            if (e.name === 'AbortError') throw e;
+            return { rarest: [] };
+        }
+    })
+};
 
 /**
  * Dynamically loads the locally pinned Chart.js build only when needed (~200KB).
@@ -52,19 +68,35 @@ export async function initSteam(signal = null) {
     renderSkeleton(profileDiv, 'list', 1);
     renderSkeleton(statsDiv, 'grid', 8);
 
-    const fetchTime = Date.now();
-
     try {
-        const [profile, owned, achievementsRes] = await Promise.all([
-            fetchAPI(`${CONFIG.API.STEAM}/profile?steamid=${CONFIG.STEAM_ID}`, false, signal),
-            fetchAPI(`${CONFIG.API.STEAM}/owned?steamid=${CONFIG.STEAM_ID}`, false, signal),
-            fetchAPI(`${CONFIG.API.STEAM}/rarest-achievements?steamid=${CONFIG.STEAM_ID}`, false, signal).catch(() => ({ rarest: [] }))
+        const [profileRes, ownedRes, achievementsRes] = await Promise.all([
+            steamSources.profile.load(signal),
+            steamSources.owned.load(signal),
+            steamSources.achievements.load(signal)
         ]);
 
         if (signal?.aborted) return;
 
-        renderSteamProfile(profileDiv, profile);
-        renderSteamStats(statsDiv, owned, achievementsRes, fetchTime);
+        // Profile section: error only when there is no cached data at all.
+        if (profileRes.status === DataStatus.ERROR) {
+            console.error("Steam profile load error", profileRes.error);
+            renderError(profileDiv, "Steam-Daten konnten nicht geladen werden.", () => initSteam(signal));
+        } else {
+            renderSteamProfile(profileDiv, profileRes.data);
+        }
+
+        // Stats section: independent status; falls back to cached data (stale).
+        if (ownedRes.status === DataStatus.ERROR) {
+            console.error("Steam stats load error", ownedRes.error);
+            renderError(statsDiv, "Steam-Statistiken konnten nicht geladen werden.", () => initSteam(signal));
+        } else {
+            renderSteamStats(statsDiv, ownedRes.data, achievementsRes.data || { rarest: [] }, ownedRes);
+        }
+
+        const overall = combineDataStatus([profileRes, ownedRes]);
+        if (overall !== DataStatus.FRESH) {
+            console.warn("Steam data not fresh:", overall);
+        }
 
     } catch (e) {
         if (e.name === 'AbortError') return;
@@ -101,7 +133,7 @@ function renderSteamProfile(container, profile) {
     container.appendChild(header);
 }
 
-function renderSteamStats(container, owned, achievementsRes, fetchTime) {
+function renderSteamStats(container, owned, achievementsRes, ownedRes) {
     while (container.firstChild) container.removeChild(container.firstChild);
     container.classList.add('section-relative');
 
@@ -275,13 +307,8 @@ function renderSteamStats(container, owned, achievementsRes, fetchTime) {
         content.appendChild(achGrid);
     }
 
-    if (fetchTime) {
-        const timeP = document.createElement('p');
-        timeP.className = 'text-center text-muted';
-        timeP.style.marginTop = '20px';
-        timeP.style.fontSize = '0.8em';
-        timeP.textContent = `Zuletzt aktualisiert: ${getRelativeTime(fetchTime)}`;
-        content.appendChild(timeP);
+    if (ownedRes?.fetchTime) {
+        renderDataStatusFooter(content, ownedRes, { retryFn: () => initSteam() });
     }
 
     container.appendChild(content);

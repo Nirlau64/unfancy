@@ -1,10 +1,26 @@
 /**
  * View Controller: Spotify
  */
-import { APIError, fetchAPI } from '../api.js';
-import { CONFIG, getDominantColor, updateAccentColor, setupSplashHover, preloadImages, renderError, getRelativeTime, renderSkeleton } from '../utils.js';
+import { APIError, DataStatus, DataStatusSource, fetchAPI } from '../api.js';
+import { CONFIG, getDominantColor, updateAccentColor, setupSplashHover, preloadImages, renderError, renderSkeleton, renderDataStatusFooter } from '../utils.js';
 
 let spotifyAbortController = null;
+let currentSpotifyRange = 'medium_term';
+
+// Data status sources persist per range across reloads so a failed refresh can
+// fall back to the last successfully loaded payload (status: stale).
+const spotifySources = new Map();
+
+function getSpotifySource(kind, range) {
+    const key = `${kind}:${range}`;
+    if (!spotifySources.has(key)) {
+        const url = kind === 'artists'
+            ? `${CONFIG.API.SPOTIFY}/top-artists?range=${range}`
+            : `${CONFIG.API.SPOTIFY}/top-tracks?range=${range}`;
+        spotifySources.set(key, new DataStatusSource((signal) => fetchAPI(url, false, signal)));
+    }
+    return spotifySources.get(key);
+}
 
 export async function initSpotify(signal = null) {
     const btns = document.querySelectorAll('.time-range-buttons button');
@@ -31,16 +47,16 @@ async function loadSpotifyData(range, signal = null) {
     const nowPlayingDiv = document.getElementById('spotify-now-playing');
     if (!artistsDiv || !tracksDiv) return;
 
+    currentSpotifyRange = range;
+
     // Show skeleton loaders
     renderSkeleton(artistsDiv, 'grid', 8);
     renderSkeleton(tracksDiv, 'grid', 8);
 
-    const fetchTime = Date.now();
-
     try {
-        const [artists, tracks, nowPlaying] = await Promise.all([
-            fetchAPI(`${CONFIG.API.SPOTIFY}/top-artists?range=${range}`, false, signal),
-            fetchAPI(`${CONFIG.API.SPOTIFY}/top-tracks?range=${range}`, false, signal),
+        const [artistsRes, tracksRes, nowPlaying] = await Promise.all([
+            getSpotifySource('artists', range).load(signal),
+            getSpotifySource('tracks', range).load(signal),
             fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`, true, signal).catch(() => null)
         ]);
 
@@ -53,15 +69,34 @@ async function loadSpotifyData(range, signal = null) {
             updateAccentColor(color);
         }
 
-        renderArtists(artistsDiv, artists?.items || [], fetchTime);
-        renderTracks(tracksDiv, tracks?.items || [], fetchTime);
+        const message = resolveSpotifyErrorMessage(artistsRes.error || tracksRes.error);
+
+        if (artistsRes.status === DataStatus.ERROR) {
+            console.error("Spotify artists loading error", artistsRes.error);
+            renderError(artistsDiv, message, () => {
+                if (spotifyAbortController) spotifyAbortController.abort();
+                spotifyAbortController = new AbortController();
+                loadSpotifyData(range, spotifyAbortController.signal);
+            });
+        } else {
+            renderArtists(artistsDiv, artistsRes.data?.items || [], artistsRes);
+        }
+
+        if (tracksRes.status === DataStatus.ERROR) {
+            console.error("Spotify tracks loading error", tracksRes.error);
+            renderError(tracksDiv, message, () => {
+                if (spotifyAbortController) spotifyAbortController.abort();
+                spotifyAbortController = new AbortController();
+                loadSpotifyData(range, spotifyAbortController.signal);
+            });
+        } else {
+            renderTracks(tracksDiv, tracksRes.data?.items || [], tracksRes);
+        }
 
     } catch(e) {
         if (e.name === 'AbortError') return;
         console.error("Spotify loading error", e);
-        const message = e instanceof APIError && e.status === 502
-            ? "Spotify-Verbindung abgelaufen. Der Spotify-Refresh-Token muss einmalig neu autorisiert werden."
-            : "Spotify-Daten konnten nicht geladen werden.";
+        const message = resolveSpotifyErrorMessage(e);
         renderError(artistsDiv, message, () => {
             if (spotifyAbortController) spotifyAbortController.abort();
             spotifyAbortController = new AbortController();
@@ -70,7 +105,13 @@ async function loadSpotifyData(range, signal = null) {
     }
 }
 
-function renderArtists(container, items, fetchTime) {
+function resolveSpotifyErrorMessage(err) {
+    return err instanceof APIError && err.status === 502
+        ? "Spotify-Verbindung abgelaufen. Der Spotify-Refresh-Token muss einmalig neu autorisiert werden."
+        : "Spotify-Daten konnten nicht geladen werden.";
+}
+
+function renderArtists(container, items, result) {
     while (container.firstChild) container.removeChild(container.firstChild);
     container.classList.add('section-relative');
 
@@ -112,20 +153,19 @@ function renderArtists(container, items, fetchTime) {
 
     content.appendChild(grid);
     
-    if (fetchTime) {
-        const timeP = document.createElement('p');
-        timeP.className = 'text-center text-muted';
-        timeP.style.marginTop = '15px';
-        timeP.style.fontSize = '0.8em';
-        timeP.textContent = `Zuletzt aktualisiert: ${getRelativeTime(fetchTime)}`;
-        content.appendChild(timeP);
+    if (result?.fetchTime) {
+        renderDataStatusFooter(content, result, { retryFn: () => {
+            if (spotifyAbortController) spotifyAbortController.abort();
+            spotifyAbortController = new AbortController();
+            loadSpotifyData(currentSpotifyRange, spotifyAbortController.signal);
+        } });
     }
 
     container.appendChild(content);
     setupSplashHover(container, '.media-card', '.splash-bg');
 }
 
-function renderTracks(container, items, fetchTime) {
+function renderTracks(container, items, result) {
     while (container.firstChild) container.removeChild(container.firstChild);
     container.classList.add('section-relative');
 
@@ -172,13 +212,12 @@ function renderTracks(container, items, fetchTime) {
 
     content.appendChild(grid);
     
-    if (fetchTime) {
-        const timeP = document.createElement('p');
-        timeP.className = 'text-center text-muted';
-        timeP.style.marginTop = '15px';
-        timeP.style.fontSize = '0.8em';
-        timeP.textContent = `Zuletzt aktualisiert: ${getRelativeTime(fetchTime)}`;
-        content.appendChild(timeP);
+    if (result?.fetchTime) {
+        renderDataStatusFooter(content, result, { retryFn: () => {
+            if (spotifyAbortController) spotifyAbortController.abort();
+            spotifyAbortController = new AbortController();
+            loadSpotifyData(currentSpotifyRange, spotifyAbortController.signal);
+        } });
     }
 
     container.appendChild(content);

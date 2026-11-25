@@ -223,3 +223,37 @@ export function removeSkeleton(container) {
     const wrap = container.querySelector('.skeleton-wrap');
     if (wrap) container.removeChild(wrap);
 }
+
+/**
+ * Renders a consistent data status footer for a loaded section.
+ * - fresh: "Zuletzt aktualisiert: <relative time>"
+ * - stale: marks the data as outdated, shows the age of the cached data and an
+ *   optional retry button
+ * - error: no-op here; sections without any data use renderError() instead
+ */
+export function renderDataStatusFooter(container, result, { retryFn = null } = {}) {
+    if (!container || !result || !result.fetchTime) return;
+
+    const p = document.createElement('p');
+    p.className = 'text-center text-muted';
+    p.style.marginTop = '15px';
+    p.style.fontSize = '0.8em';
+    p.dataset.dataStatus = result.status;
+
+    if (result.status === 'stale') {
+        p.textContent = `Veraltet (Stand: ${getRelativeTime(result.fetchTime)}) – Aktualisierung fehlgeschlagen.`;
+        if (result.error) console.warn('Data status: showing stale data after error', result.error);
+        if (retryFn) {
+            const btn = document.createElement('button');
+            btn.className = 'btn-retry';
+            btn.textContent = 'Erneut versuchen';
+            btn.onclick = retryFn;
+            p.appendChild(document.createElement('br'));
+            p.appendChild(btn);
+        }
+    } else {
+        p.textContent = `Zuletzt aktualisiert: ${getRelativeTime(result.fetchTime)}`;
+    }
+
+    container.appendChild(p);
+}
