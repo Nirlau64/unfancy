@@ -102,12 +102,24 @@ for (const [page, meta] of Object.entries(PAGES)) {
     // 3. Mark the static page so tests and the router can detect it.
     html = html.replace('<body>', `<body data-static-page="${page}">`);
 
+    // 3b. Move the nav's active state (class + aria-current) from Home to this
+    // page's link so the deep link renders correctly before JS runs.
+    const homeActive = '<a href="/" class="nav-link active" data-page="home" aria-current="page">';
+    const pagePlain = `<a href="/${page}/" class="nav-link" data-page="${page}">`;
+    const pageActive = `<a href="/${page}/" class="nav-link active" data-page="${page}" aria-current="page">`;
+    if (!html.includes(homeActive) || !html.includes(pagePlain)) {
+        throw new Error(`Validation failed for ${page}: nav links not found in expected shape`);
+    }
+    html = html.replace(homeActive, '<a href="/" class="nav-link" data-page="home">');
+    html = html.replace(pagePlain, pageActive);
+
     // 4. Validate the result before writing.
     for (const [label, needle] of [
         ['canonical', `<link rel="canonical" href="${ORIGIN}/${page}/">`],
         ['static marker', `<body data-static-page="${page}">`],
         ['title', meta.title],
         ['description', meta.description],
+        ['active nav link', pageActive],
     ]) {
         if (!html.includes(needle)) {
             throw new Error(`Validation failed for ${page}: missing ${label}`);

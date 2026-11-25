@@ -79,7 +79,7 @@ function getPageHTML(pageName) {
  * @param {boolean} pushState - Whether to push a new history entry
  * @param {Function} triggerLogicFn - Callback to initialize the loaded page's JS logic
  */
-export async function loadPage(pageName, pushState = true, triggerLogicFn) {
+export async function loadPage(pageName, pushState = true, triggerLogicFn, { focusHeading = true } = {}) {
     const contentDiv = document.getElementById('app-content');
     if (!contentDiv || !PAGE_MAP[pageName]) return;
 
@@ -135,15 +135,23 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
         // Finish transition
         contentDiv.classList.remove('fade-out');
 
-        // A11y: Set focus to the first heading of the new content
+        // A11y: move focus to the first heading of the new content, unless the
+        // caller manages focus itself (keyboard nav keeps focus roving inside
+        // the nav instead of yanking it into the content).
         const firstHeading = contentDiv.querySelector('h1, h2, h3');
-        if (firstHeading) {
+        let headingFocused = false;
+        if (firstHeading && focusHeading) {
             firstHeading.setAttribute('tabindex', '-1');
             firstHeading.focus();
+            headingFocused = true;
         }
 
-        // A11y: announce the new page to screen readers via the live region
-        announcePage(pageName, firstHeading);
+        // A11y: announce the new page via the live region only when focus was
+        // NOT moved to the heading — focusing the heading already announces it
+        // to screen readers, so both together would double-announce.
+        if (!headingFocused) {
+            announcePage(pageName, firstHeading);
+        }
 
     } catch (e) {
         if (e.name === 'AbortError') return;
@@ -154,6 +162,41 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
         contentDiv.classList.remove('fade-out');
         renderError(contentDiv, `Seite konnte nicht geladen werden: ${e.message}`, () => loadPage(pageName, pushState, triggerLogicFn));
     }
+}
+
+/**
+ * Creates the document-level keydown handler for arrow-key navigation inside
+ * the main navigation (#nav-tabs).
+ *
+ * Roving focus model: the target nav link receives focus immediately, so
+ * consecutive arrow presses keep working without re-tabbing into the nav.
+ * loadPage is asked to skip moving focus to the page heading (which would
+ * pull focus out of the nav); the live region still announces the new page.
+ * Outside the nav the arrow keys keep their native behavior.
+ *
+ * @param {object} [deps]
+ * @param {Function} [deps.triggerLogicFn] Page logic trigger passed to loadPage.
+ * @param {Function} [deps.loadPageFn] Navigation function (injectable for tests).
+ * @returns {Function} A keydown handler; returns true when it consumed the key.
+ */
+export function createArrowNavHandler({ triggerLogicFn, loadPageFn = loadPage } = {}) {
+    return function handleNavArrowKey(e) {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return false;
+        if (!e.target?.closest?.('#nav-tabs')) return false;
+
+        const navLinks = Array.from(document.querySelectorAll('.nav-tabs .nav-link'));
+        const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
+        const targetIndex = getNextNavIndex(e.key, currentIndex, navLinks.length);
+        if (targetIndex === -1) return false;
+
+        // The navigation owns these keys while focused; don't scroll the page too.
+        e.preventDefault();
+        const targetLink = navLinks[targetIndex];
+        // Roving focus: keep focus on the nav so the next arrow press works.
+        targetLink.focus();
+        loadPageFn(targetLink.dataset.page, true, triggerLogicFn, { focusHeading: false });
+        return true;
+    };
 }
 
 /**

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { getNextNavIndex, resolveSwipeTarget } from '../js/router.js';
+import { createArrowNavHandler, getNextNavIndex, resolveSwipeTarget } from '../js/router.js';
 
 const THRESHOLD = 80;
 const COUNT = 5; // home, steam, spotify, lol, socials
@@ -93,9 +93,101 @@ test('router keeps aria-current in sync with the active nav link', async () => {
 });
 
 test('arrow-key navigation is scoped to the nav instead of the whole document', async () => {
-    const mainSource = await readFile(new URL('../js/main.js', import.meta.url), 'utf8');
-    assert.match(mainSource, /closest\?\.\('#nav-tabs'\)/,
+    const routerSource = await readFile(new URL('../js/router.js', import.meta.url), 'utf8');
+    assert.match(routerSource, /closest\?\.\('#nav-tabs'\)/,
         'arrow keys must only be handled when focus is inside the nav');
+    const mainSource = await readFile(new URL('../js/main.js', import.meta.url), 'utf8');
+    assert.match(mainSource, /createArrowNavHandler\(/,
+        'main.js must wire the roving-focus arrow handler');
     assert.doesNotMatch(mainSource, /if \(e\.key === 'ArrowLeft' \|\| e\.key === 'ArrowRight'\) \{\s*const navLinks/,
         'the old document-wide arrow handling must be gone');
+});
+
+function makeNavLink(page, isActive) {
+    const classes = new Set(isActive ? ['active'] : []);
+    return {
+        dataset: { page },
+        focusCalls: 0,
+        classList: {
+            contains: c => classes.has(c),
+            toggle: (c, on) => { on ? classes.add(c) : classes.delete(c); },
+        },
+        closest: sel => (sel === '#nav-tabs' ? 'nav' : null),
+        focus() { this.focusCalls += 1; },
+    };
+}
+
+test('arrow navigation keeps focus in the nav across consecutive presses', () => {
+    const pages = ['home', 'steam', 'spotify', 'lol', 'socials'];
+    const links = pages.map((page, i) => makeNavLink(page, i === 0));
+    const loaded = [];
+    const handler = createArrowNavHandler({
+        triggerLogicFn: () => {},
+        loadPageFn: (page, _push, _logic, options) => {
+            loaded.push(page);
+            assert.equal(options.focusHeading, false,
+                'keyboard navigation must not move focus into the page content');
+            // Mimic loadPage's active-class/aria-current sync.
+            links.forEach(l => l.classList.toggle('active', l.dataset.page === page));
+        },
+    });
+    const fakeDocument = { querySelectorAll: () => links };
+    const previousDocument = globalThis.document;
+    globalThis.document = fakeDocument;
+    try {
+        const keydown = target => ({
+            key: 'ArrowRight',
+            target,
+            defaultPrevented: false,
+            preventDefault() { this.defaultPrevented = true; },
+        });
+
+        // Focus starts on the first nav link (user tabbed into the nav).
+        const firstEvent = keydown(links[0]);
+        assert.equal(handler(firstEvent), true, 'the first arrow press must be handled');
+        assert.deepEqual(loaded, ['steam']);
+        assert.equal(links[1].focusCalls, 1, 'focus must rove to the target nav link');
+        assert.equal(links[0].focusCalls, 0, 'no other link may be focused');
+
+        // Second press WITHOUT manual refocusing: e.target is the link that
+        // received roving focus. This is the regression: it used to be ignored
+        // because loadPage had yanked focus to the page heading.
+        const secondEvent = keydown(links[1]);
+        assert.equal(handler(secondEvent), true, 'the second arrow press must be handled without refocusing');
+        assert.deepEqual(loaded, ['steam', 'spotify'], 'both page changes must happen');
+        assert.equal(links[2].focusCalls, 1, 'focus must rove on for the second press');
+        assert.ok(firstEvent.defaultPrevented && secondEvent.defaultPrevented,
+            'handled arrow keys must not scroll the page');
+
+        // Wraparound from the last link still works with roving focus.
+        // Simulate having navigated to the last page (socials) first.
+        links.forEach(l => l.classList.toggle('active', l.dataset.page === 'socials'));
+        const wrapEvent = keydown(links[4]);
+        assert.equal(handler(wrapEvent), true);
+        assert.deepEqual(loaded, ['steam', 'spotify', 'home'],
+            'ArrowRight on the last page must wrap to home');
+        assert.equal(links[0].focusCalls, 1);
+    } finally {
+        if (previousDocument === undefined) delete globalThis.document;
+        else globalThis.document = previousDocument;
+    }
+});
+
+test('arrow handler ignores keys outside the nav and non-arrow keys', () => {
+    const links = ['home', 'steam'].map((page, i) => makeNavLink(page, i === 0));
+    const loaded = [];
+    const handler = createArrowNavHandler({ loadPageFn: p => loaded.push(p) });
+    const fakeDocument = { querySelectorAll: () => links };
+    const previousDocument = globalThis.document;
+    globalThis.document = fakeDocument;
+    try {
+        const outside = { key: 'ArrowRight', target: { closest: () => null }, preventDefault() {} };
+        assert.equal(handler(outside), false);
+        assert.equal(handler({ key: 'ArrowDown', target: links[0], preventDefault() {} }), false);
+        assert.deepEqual(loaded, [], 'nothing may load for ignored keys');
+        assert.equal(links[1].focusCalls, 0);
+    } finally {
+        if (previousDocument === undefined) delete globalThis.document;
+        else globalThis.document = previousDocument;
+    }
 });

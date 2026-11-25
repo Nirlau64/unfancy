@@ -9,7 +9,7 @@ import {
     preCachePage,
     preloadPageFragments,
     getPageFromURL,
-    getNextNavIndex
+    createArrowNavHandler
 } from './router.js';
 import { initHome, updateHomeStatus } from './views/home.js';
 import { initSteam, cleanupSteam } from './views/steam.js';
@@ -128,21 +128,11 @@ document.addEventListener('click', (e) => {
 });
 
 // Keyboard listener for tab navigation (Arrow Keys).
-// Only active while focus is inside the main navigation so arrow keys keep
-// their native behavior in forms, lists and scrollable content elsewhere.
-document.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    if (!e.target.closest?.('#nav-tabs')) return;
-
-    const navLinks = Array.from(document.querySelectorAll('.nav-tabs .nav-link'));
-    const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
-    const targetIndex = getNextNavIndex(e.key, currentIndex, navLinks.length);
-    if (targetIndex === -1) return;
-
-    // The navigation owns these keys while focused; don't scroll the page too.
-    e.preventDefault();
-    loadPage(navLinks[targetIndex].dataset.page, true, triggerPageLogic);
-});
+// Roving focus model: only active while focus is inside the main navigation
+// (arrow keys keep their native behavior in forms, lists and scrollable
+// content elsewhere), and the handler keeps focus roving across the nav links
+// so consecutive presses work without re-tabbing into the nav.
+document.addEventListener('keydown', createArrowNavHandler({ triggerLogicFn: triggerPageLogic }));
 
 // Deterministic readiness marker for automated tests: the module's global
 // listeners (click/swipe/popstate) are registered once this top-level code
