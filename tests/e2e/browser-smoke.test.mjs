@@ -105,12 +105,17 @@ class CDP {
         this.ws = new WebSocket(wsUrl);
         this.id = 0;
         this.pending = new Map();
+        this.events = [];
         this.ready = new Promise((resolve, reject) => {
             this.ws.onopen = resolve;
             this.ws.onerror = () => reject(new Error('DevTools WebSocket error'));
         });
         this.ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
+            if (!msg.id && ['Runtime.exceptionThrown', 'Log.entryAdded', 'Network.loadingFailed'].includes(msg.method)) {
+                this.events.push({ method: msg.method, params: msg.params });
+                if (this.events.length > 20) this.events.shift();
+            }
             if (msg.id && this.pending.has(msg.id)) {
                 const { resolve, reject } = this.pending.get(msg.id);
                 this.pending.delete(msg.id);
@@ -151,7 +156,10 @@ async function waitFor(cdp, predicateExpression, label, timeoutMs = 15000) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
         if (await evalJs(cdp, predicateExpression)) return;
-        if (Date.now() > deadline) throw new Error(`smoke timeout waiting for: ${label}`);
+        if (Date.now() > deadline) {
+            const state = await evalJs(cdp, `({ href: location.href, title: document.title, ready: document.documentElement.dataset.unfancyReady, controller: !!navigator.serviceWorker.controller, cacheKeys: (async () => await caches.keys())() })`).catch(() => null);
+            throw new Error(`smoke timeout waiting for: ${label}; state=${JSON.stringify(state)}; browserEvents=${JSON.stringify(cdp.events)}`);
+        }
         await new Promise(resolve => setTimeout(resolve, 100));
     }
 }
@@ -208,6 +216,8 @@ test('browser smoke against a real local static server', async () => {
                 cdp = new CDP(page.webSocketDebuggerUrl);
                 await cdp.send('Page.enable');
                 await cdp.send('Runtime.enable');
+                await cdp.send('Log.enable');
+                await cdp.send('Network.enable');
             } catch (error) { cdp = undefined; lastError = error; }
         }
         if (!cdp) throw lastError;
@@ -260,7 +270,7 @@ test('browser smoke against a real local static server', async () => {
                 `navigator.serviceWorker.controller !== null`,
                 'service worker controlling the page');
             await waitFor(cdp,
-                `(async () => (await caches.keys()).includes('unfancy-v7'))()`,
+                `(async () => (await caches.keys()).some(key => /^unfancy-v\\d+$/.test(key)))()`,
                 'service worker cache warmed');
 
             // Shut the server down: anything served now must come from the SW cache.

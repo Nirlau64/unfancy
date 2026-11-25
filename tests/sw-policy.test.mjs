@@ -13,6 +13,7 @@ test('service worker caches the static routes and new icons', () => {
         assert.ok(sw.includes(`'${route}'`), `service worker precaches ${route}`);
     }
     assert.ok(sw.includes("'/assets/vendor/chart.umd.js'"), 'service worker precaches the vendored chart');
+    assert.ok(sw.includes("'/js/api.js?v=riot-timeout-30s-no-store-v2'"), 'service worker precaches the cache-busted LoL module dependency');
     assert.ok(!sw.includes("'/assets/favicon.png'"), 'oversized icon is not precached');
 });
 

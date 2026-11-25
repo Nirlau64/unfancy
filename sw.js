@@ -11,6 +11,9 @@ const STATIC_ASSETS = [
     '/js/main.js',
     '/js/router.js',
     '/js/api.js',
+    // LoL imports this cache-busted module URL; precache the exact URL too so
+    // offline navigation can evaluate the static module graph.
+    '/js/api.js?v=riot-timeout-30s-no-store-v2',
     '/js/utils.js',
     '/js/lol-data.mjs',
     '/js/views/home.js',
