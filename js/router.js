@@ -123,6 +123,9 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
 
     } catch (e) {
         if (e.name === 'AbortError') return;
+        // A newer navigation owns the content area; never clobber it with a
+        // late error from a superseded request.
+        if (signal.aborted) return;
         console.error("Routing Error:", e);
         contentDiv.classList.remove('fade-out');
         renderError(contentDiv, `Seite konnte nicht geladen werden: ${e.message}`, () => loadPage(pageName, pushState, triggerLogicFn));

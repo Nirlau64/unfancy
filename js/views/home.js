@@ -26,6 +26,9 @@ export async function updateHomeStatus(signal = null) {
     try {
         const spData = await fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`, true, signal);
         
+        // Late response guard: navigation may have replaced the view DOM.
+        if (signal?.aborted || !liveSection.isConnected || !recentSection.isConnected) return;
+
         if (signal?.aborted) return;
         
         // Clear containers only if we have data to show or no activity

@@ -22,7 +22,8 @@ export async function initLoL(signal = null) {
             signal
         });
 
-        if (signal?.aborted) return;
+        // Late response guard: navigation may have replaced the view DOM.
+        if (signal?.aborted || !profileContainer.isConnected || !statsContainer.isConnected) return;
 
         renderLoLProfile(profileContainer, data);
         renderLoLStats(statsContainer, data, champMap, queueMap, fetchTime);

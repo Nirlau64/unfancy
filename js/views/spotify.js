@@ -26,19 +26,42 @@ export async function initSpotify(signal = null) {
     const btns = document.querySelectorAll('.time-range-buttons button');
     if (!btns.length) return;
     
-    // Use a WeakMap or a flag to prevent multiple listeners if re-initialized
-    // But since buttons are part of #app-content and replaced, it's usually safe.
+    // A previous visit's controller (e.g. after back/forward) must not keep
+    // fetching into a replaced DOM.
+    if (spotifyAbortController) spotifyAbortController.abort();
+    spotifyAbortController = new AbortController();
+
+    // Couple every view request to the router's navigation signal: once the
+    // user navigates away, pending fetches abort immediately instead of
+    // finishing late and racing the next view.
+    const viewSignal = signal
+        ? AbortSignal.any([signal, spotifyAbortController.signal])
+        : spotifyAbortController.signal;
+
     btns.forEach(b => b.addEventListener('click', (e) => {
         btns.forEach(btn => btn.classList.remove('active'));
         e.target.classList.add('active');
         // Abort previous data load on rapid tab switches
         if (spotifyAbortController) spotifyAbortController.abort();
-        spotifyAbortController = new AbortController();
-        loadSpotifyData(e.target.dataset.range, spotifyAbortController.signal);
+        // A fresh local controller, still chained to the navigation signal.
+        const local = new AbortController();
+        spotifyAbortController = local;
+        const chained = signal ? AbortSignal.any([signal, local.signal]) : local.signal;
+        loadSpotifyData(e.target.dataset.range, chained);
     }));
 
-    spotifyAbortController = new AbortController();
-    loadSpotifyData('medium_term', spotifyAbortController.signal);
+    loadSpotifyData('medium_term', viewSignal);
+}
+
+/**
+ * Lifecycle cleanup: aborts pending Spotify requests when the view is left.
+ * Part of the uniform view cleanup contract (see js/main.js).
+ */
+export function cleanupSpotify() {
+    if (spotifyAbortController) {
+        spotifyAbortController.abort();
+        spotifyAbortController = null;
+    }
 }
 
 async function loadSpotifyData(range, signal = null) {
@@ -59,6 +82,9 @@ async function loadSpotifyData(range, signal = null) {
             getSpotifySource('tracks', range).load(signal),
             fetchAPI(`${CONFIG.API.SPOTIFY}/now-playing`, true, signal).catch(() => null)
         ]);
+
+        // Late response guard: navigation may have replaced the view DOM.
+        if (signal?.aborted || !artistsDiv.isConnected || !tracksDiv.isConnected) return;
 
         if (signal?.aborted) return;
 

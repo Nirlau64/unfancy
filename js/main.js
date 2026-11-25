@@ -12,7 +12,7 @@ import {
 } from './router.js';
 import { initHome, updateHomeStatus } from './views/home.js';
 import { initSteam, cleanupSteam } from './views/steam.js';
-import { initSpotify } from './views/spotify.js';
+import { initSpotify, cleanupSpotify } from './views/spotify.js';
 import { initLoL } from './views/lol.js';
 import { initSocials } from './views/socials.js';
 
@@ -23,10 +23,7 @@ let currentPageCleanup = null;
  */
 function triggerPageLogic(pageName, signal = null) {
     // Run cleanup of previous page if exists
-    if (currentPageCleanup) {
-        currentPageCleanup();
-        currentPageCleanup = null;
-    }
+    runPageCleanup();
 
     // Reset page title (in case it was changed by Spotify Live Status), but keep
     // the unique per-page titles that also power the static deep-link routes.
@@ -48,6 +45,7 @@ function triggerPageLogic(pageName, signal = null) {
             break;
         case 'spotify':
             initSpotify(signal);
+            currentPageCleanup = cleanupSpotify;
             break;
         case 'lol':
             initLoL(signal);
@@ -57,6 +55,22 @@ function triggerPageLogic(pageName, signal = null) {
             break;
         default:
             console.warn(`No logic defined for page: ${pageName}`);
+    }
+
+    // The live-status poller only makes sense while the home view is shown.
+    if (pageName === 'home') startHomePolling();
+    else stopHomePolling();
+}
+
+/**
+ * Uniform view cleanup contract: a view registers its teardown (abort
+ * controllers, chart instances, timers) via currentPageCleanup and it is
+ * guaranteed to run before the next view initializes.
+ */
+function runPageCleanup() {
+    if (currentPageCleanup) {
+        currentPageCleanup();
+        currentPageCleanup = null;
     }
 }
 
@@ -177,26 +191,30 @@ document.addEventListener('DOMContentLoaded', () => {
         loadPage(requestedPage, false, triggerPageLogic).finally(schedulePagePrefetch);
     }
 
-    // Live Status Auto-Refresh (Home only)
-    let refreshInterval = null;
-    const startPolling = () => {
-        if (!refreshInterval) {
-            refreshInterval = setInterval(() => {
-                if (document.getElementById('home')) {
-                    updateHomeStatus();
-                }
-            }, 60000);
-        }
-    };
-    const stopPolling = () => {
-        clearInterval(refreshInterval);
-        refreshInterval = null;
-    };
-
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) stopPolling();
-        else startPolling();
+        if (document.hidden) stopHomePolling();
+        else if (document.getElementById('home')) startHomePolling();
     });
 
-    startPolling();
+    // Home is the initial route in the common case; triggerPageLogic manages
+    // the poller from here on (start on home, stop on every other page).
+    startHomePolling();
 });
+
+// Live Status Auto-Refresh (Home only). Started/stopped by the view lifecycle
+// in triggerPageLogic so no home requests fire while another view is active.
+let refreshInterval = null;
+function startHomePolling() {
+    if (refreshInterval || document.hidden) return;
+    refreshInterval = setInterval(() => {
+        if (document.getElementById('home')) {
+            updateHomeStatus();
+        }
+    }, 60000);
+}
+function stopHomePolling() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+    }
+}

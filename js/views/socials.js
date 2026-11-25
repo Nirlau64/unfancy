@@ -15,7 +15,8 @@ export async function initSocials(signal = null) {
     try {
         const ytRes = await ytSource.load(signal);
 
-        if (signal?.aborted) return;
+        // Late response guard: navigation may have replaced the view DOM.
+        if (signal?.aborted || !ytContainer.isConnected) return;
         const ytData = ytRes.data;
 
         if (ytData?.status === 'ok' && ytData.items.length > 0) {
