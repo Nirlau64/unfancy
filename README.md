@@ -48,7 +48,7 @@ unfancy/
 ├── CNAME                # GitHub Pages Custom Domain (nirlau.de)
 ├── _headers             # Header-Vorlage; GitHub Pages wertet diese Datei NICHT aus
 ├── manifest.json        # PWA-Manifest (favicon-64/icon-192/icon-512)
-├── sw.js                # Service Worker (unfancy-v7, keine API-Persistenz)
+├── sw.js                # Service Worker (unfancy-v8, API-Caching nach Datenaktualität)
 ├── sitemap.xml          # Kanonische öffentliche Routen
 ├── robots.txt           # Verweist auf die Sitemap
 ├── pages/               # HTML Content-Fragmente (kein <head>/<body>)
