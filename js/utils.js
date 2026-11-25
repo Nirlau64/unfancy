@@ -241,7 +241,12 @@ export function renderDataStatusFooter(container, result, { retryFn = null } = {
     p.dataset.dataStatus = result.status;
 
     if (result.status === 'stale') {
-        p.textContent = `Veraltet (Stand: ${getRelativeTime(result.fetchTime)}) – Aktualisierung fehlgeschlagen.`;
+        // Stale without an error means the service worker served a cached
+        // copy (X-Unfancy-Cache: stale); only failed refreshes get the
+        // failure note plus retry button.
+        p.textContent = result.error
+            ? `Veraltet (Stand: ${getRelativeTime(result.fetchTime)}) – Aktualisierung fehlgeschlagen.`
+            : `Veraltet (Stand: ${getRelativeTime(result.fetchTime)})`;
         if (result.error) console.warn('Data status: showing stale data after error', result.error);
         if (retryFn) {
             const btn = document.createElement('button');

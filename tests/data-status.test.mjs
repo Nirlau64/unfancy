@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { APIError, DataStatus, DataStatusSource, combineDataStatus } from '../js/api.js';
+import { APIError, DataStatus, DataStatusSource, combineDataStatus, fetchAPI, STALE_CACHE_MARK } from '../js/api.js';
 
 function abortedError() {
     const e = new Error('aborted');
@@ -90,4 +90,64 @@ test('combineDataStatus: error beats stale beats fresh', () => {
     assert.equal(combineDataStatus([fresh, error]), DataStatus.ERROR);
     assert.equal(combineDataStatus([stale, error]), DataStatus.ERROR);
     assert.equal(combineDataStatus([]), DataStatus.FRESH);
+});
+
+test('fetchAPI tags payloads served with X-Unfancy-Cache: stale', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({ value: 'cached' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-Unfancy-Cache': 'stale' }
+    });
+    try {
+        const data = await fetchAPI('https://example.test/api');
+        assert.equal(data.value, 'cached');
+        assert.equal(data[STALE_CACHE_MARK], true);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('fetchAPI does not tag fresh responses', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({ value: 'live' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+    });
+    try {
+        const data = await fetchAPI('https://example.test/api');
+        assert.equal(data[STALE_CACHE_MARK], undefined);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('DataStatusSource reports a cache-marked payload as stale with error null', async () => {
+    const payload = { value: 'cached' };
+    payload[STALE_CACHE_MARK] = true;
+    const source = new DataStatusSource(async () => payload);
+
+    const result = await source.load();
+
+    assert.equal(result.status, DataStatus.STALE);
+    assert.equal(result.data.value, 'cached');
+    assert.equal(result.error, null);
+    assert.equal(typeof result.fetchTime, 'number');
+
+    // The cache-marked payload is still stored, so a later hard failure
+    // degrades to stale as usual.
+    const failing = new DataStatusSource(async () => {
+        throw new APIError('down', 502, null);
+    });
+    await failing.load().catch(() => {});
+    assert.equal(failing.lastData, null);
+});
+
+test('DataStatusSource stays fresh for unmarked payloads and keeps the mark out of JSON', async () => {
+    const payload = { value: 'live' };
+    const source = new DataStatusSource(async () => payload);
+
+    const result = await source.load();
+
+    assert.equal(result.status, DataStatus.FRESH);
+    assert.equal(JSON.stringify(payload), '{"value":"live"}');
 });
