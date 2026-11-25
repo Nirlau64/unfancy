@@ -19,6 +19,21 @@ const pageCache = new Map();
 const pageFetches = new Map();
 let currentAbortController = null;
 
+/**
+ * Announces a page change to screen readers via the #page-announcer live region.
+ * @param {string} pageName - The page that was loaded
+ * @param {Element|null} firstHeading - The heading that received focus, if any
+ */
+function announcePage(pageName, firstHeading) {
+    const announcer = document.getElementById('page-announcer');
+    if (!announcer) return;
+    const label = (firstHeading?.textContent || pageName).trim();
+    // Reassign the same text only when it changes; identical text is not re-announced.
+    if (announcer.textContent !== label) {
+        announcer.textContent = label;
+    }
+}
+
 // Clean public paths for the statically generated route pages. New history
 // entries use these; the legacy `?page=` routes keep working because
 // getPageFromURL() accepts both forms.
@@ -101,9 +116,15 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
             window.history.pushState({ page: pageName }, '', url);
         }
 
-        // Update Nav Links
+        // Update Nav Links (class for styling, aria-current for assistive tech)
         document.querySelectorAll('.nav-tabs .nav-link').forEach(link => {
-            link.classList.toggle('active', link.dataset.page === pageName);
+            const isActive = link.dataset.page === pageName;
+            link.classList.toggle('active', isActive);
+            if (isActive) {
+                link.setAttribute('aria-current', 'page');
+            } else {
+                link.removeAttribute('aria-current');
+            }
         });
 
         // Trigger Page Specific Logic
@@ -120,6 +141,9 @@ export async function loadPage(pageName, pushState = true, triggerLogicFn) {
             firstHeading.setAttribute('tabindex', '-1');
             firstHeading.focus();
         }
+
+        // A11y: announce the new page to screen readers via the live region
+        announcePage(pageName, firstHeading);
 
     } catch (e) {
         if (e.name === 'AbortError') return;
@@ -177,37 +201,72 @@ export function setupPopstate(triggerLogicFn) {
 }
 
 /**
+ * Pure swipe decision used by setupSwipeNavigation (exported for tests).
+ * A swipe counts only when it is clearly horizontal and beyond the threshold.
+ * @returns {number} target index, or -1 when the gesture is not a navigation swipe
+ */
+export function resolveSwipeTarget({ startX, startY, endX, endY, threshold, currentIndex, count }) {
+    if (count <= 0 || currentIndex < 0 || currentIndex >= count) return -1;
+    const deltaX = startX - endX;
+    const deltaY = startY - endY;
+    // Require horizontal dominance so vertical scrolling never triggers navigation.
+    if (Math.abs(deltaX) <= threshold || Math.abs(deltaX) <= Math.abs(deltaY)) return -1;
+    if (deltaX > 0) {
+        // Swipe Left -> Next
+        return (currentIndex + 1) % count;
+    }
+    // Swipe Right -> Prev
+    return (currentIndex - 1 + count) % count;
+}
+
+/**
+ * Pure arrow-key navigation decision (exported for tests).
+ * @param {string} key - KeyboardEvent.key ('ArrowLeft' or 'ArrowRight')
+ * @returns {number} target index, or -1 when the key is not a navigation arrow
+ */
+export function getNextNavIndex(key, currentIndex, count) {
+    if (count <= 0 || currentIndex < 0 || currentIndex >= count) return -1;
+    if (key === 'ArrowLeft') return (currentIndex - 1 + count) % count;
+    if (key === 'ArrowRight') return (currentIndex + 1) % count;
+    return -1;
+}
+
+/**
  * Handles swipe gestures for navigation.
  */
 export function setupSwipeNavigation(loadPageFn) {
     let touchStartX = 0;
-    let touchEndX = 0;
+    let touchStartY = 0;
     const swipeThreshold = 80;
+    // Gestures starting on interactive elements are taps/scrolls, not navigation.
+    const INTERACTIVE_SELECTOR = 'a, button, input, textarea, select, label, [contenteditable]';
 
     document.addEventListener('touchstart', e => {
         // Only track single-finger touches to avoid multi-touch false positives
         if (e.touches.length !== 1) return;
         touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
     }, { passive: true });
 
     document.addEventListener('touchend', e => {
-        touchEndX = e.changedTouches[0].screenX;
-
-        // Don't navigate if the user is scrolling a horizontally-scrollable element
-        if (e.target.closest('.lol-table-wrap')) return;
+        const touch = e.changedTouches[0];
+        // Don't navigate if the gesture started on an interactive element
+        // or inside a horizontally-scrollable element.
+        if (!touch) return;
+        if (e.target.closest?.(INTERACTIVE_SELECTOR)) return;
+        if (e.target.closest?.('.lol-table-wrap')) return;
 
         const navLinks = Array.from(document.querySelectorAll('.nav-tabs .nav-link'));
         const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
-        if (currentIndex === -1) return;
-
-        let targetIndex = -1;
-        if (touchStartX - touchEndX > swipeThreshold) {
-            // Swipe Left -> Next
-            targetIndex = (currentIndex + 1) % navLinks.length;
-        } else if (touchEndX - touchStartX > swipeThreshold) {
-            // Swipe Right -> Prev
-            targetIndex = (currentIndex - 1 + navLinks.length) % navLinks.length;
-        }
+        const targetIndex = resolveSwipeTarget({
+            startX: touchStartX,
+            startY: touchStartY,
+            endX: touch.screenX,
+            endY: touch.screenY,
+            threshold: swipeThreshold,
+            currentIndex,
+            count: navLinks.length
+        });
 
         if (targetIndex !== -1) {
             loadPageFn(navLinks[targetIndex].dataset.page);
@@ -217,6 +276,6 @@ export function setupSwipeNavigation(loadPageFn) {
     // Reset touch state on cancel to prevent stale values
     document.addEventListener('touchcancel', () => {
         touchStartX = 0;
-        touchEndX = 0;
+        touchStartY = 0;
     }, { passive: true });
 }

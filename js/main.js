@@ -8,7 +8,8 @@ import {
     setupSwipeNavigation,
     preCachePage,
     preloadPageFragments,
-    getPageFromURL
+    getPageFromURL,
+    getNextNavIndex
 } from './router.js';
 import { initHome, updateHomeStatus } from './views/home.js';
 import { initSteam, cleanupSteam } from './views/steam.js';
@@ -126,22 +127,21 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Global keyboard listener for tab navigation (Arrow Keys)
+// Keyboard listener for tab navigation (Arrow Keys).
+// Only active while focus is inside the main navigation so arrow keys keep
+// their native behavior in forms, lists and scrollable content elsewhere.
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        const navLinks = Array.from(document.querySelectorAll('.nav-tabs .nav-link'));
-        const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
-        if (currentIndex === -1) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (!e.target.closest?.('#nav-tabs')) return;
 
-        let targetIndex;
-        if (e.key === 'ArrowLeft') {
-            targetIndex = (currentIndex - 1 + navLinks.length) % navLinks.length;
-        } else {
-            targetIndex = (currentIndex + 1) % navLinks.length;
-        }
-        
-        loadPage(navLinks[targetIndex].dataset.page, true, triggerPageLogic);
-    }
+    const navLinks = Array.from(document.querySelectorAll('.nav-tabs .nav-link'));
+    const currentIndex = navLinks.findIndex(l => l.classList.contains('active'));
+    const targetIndex = getNextNavIndex(e.key, currentIndex, navLinks.length);
+    if (targetIndex === -1) return;
+
+    // The navigation owns these keys while focused; don't scroll the page too.
+    e.preventDefault();
+    loadPage(navLinks[targetIndex].dataset.page, true, triggerPageLogic);
 });
 
 // Deterministic readiness marker for automated tests: the module's global

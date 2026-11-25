@@ -82,6 +82,20 @@ p { font-size: 1rem; line-height: 1.75; }
 .text-muted { color: var(--text-muted); font-size: 0.87rem; }
 .text-accent { color: var(--accent); }
 
+/* Visually hidden, still exposed to screen readers (live region, labels) */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
 /* Navigation stays compact and available while scrolling */
 .nav-tabs {
     position: sticky;

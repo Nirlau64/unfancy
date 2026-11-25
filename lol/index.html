@@ -43,8 +43,8 @@
         </header>
 
         <!-- Navigation -->
-        <nav class="nav-tabs" id="nav-tabs">
-            <a href="/" class="nav-link active" data-page="home">Home</a>
+        <nav class="nav-tabs" id="nav-tabs" aria-label="Hauptnavigation">
+            <a href="/" class="nav-link active" data-page="home" aria-current="page">Home</a>
             <a href="/steam/" class="nav-link" data-page="steam">Steam</a>
             <a href="/spotify/" class="nav-link" data-page="spotify">Spotify</a>
             <a href="/lol/" class="nav-link" data-page="lol">League of Legends</a>
@@ -62,6 +62,9 @@
         </main>
 
     </div>
+
+    <!-- Screen-reader announcement of page changes (kept visually hidden) -->
+    <p id="page-announcer" class="sr-only" role="status" aria-live="polite"></p>
 
     <footer><p><span id="footer-year"></span> Unfancy - Laurin</p></footer>
 
